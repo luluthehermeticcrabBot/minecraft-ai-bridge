@@ -1,0 +1,68 @@
+services:
+  minecraft:
+    image: itzg/minecraft-server:latest
+    container_name: mc-paper
+    restart: unless-stopped
+    ports:
+      - "25565:25565"   # Minecraft client
+      - "25575:25575"   # RCON (admin fallback)
+      - "1789:1789"     # MCPQ plugin (gRPC)
+    environment:
+      EULA: "TRUE"
+      TYPE: PAPER
+      VERSION: "1.20.1"
+      PAPER_RELEASE_CHANNEL: "stable"
+      # RCON (optional fallback)
+      ENABLE_RCON: "true"
+      RCON_PASSWORD: "changeme"
+      RCON_PORT: 25575
+      # Server properties
+      ONLINE_MODE: "false"
+      DIFFICULTY: "easy"
+      MOTD: "Minecraft AI Bridge — MCPQ"
+      MAX_PLAYERS: 10
+      SPAWN_PROTECTION: 0
+      VIEW_DISTANCE: 10
+      # MCPQ plugin config — the plugin reads this from env
+      MCPQ_PORT: 1789
+    volumes:
+      - ./mcpq-plugins:/plugins
+      - ./mcpq-config/config.yml:/data/plugins/mcpq/config.yml
+      - mc-world:/data
+    healthcheck:
+      # Check Paper's actual Minecraft port (25565) as a reliable
+      # indicator the server + all plugins are up.
+      test: ["CMD", "bash", "-c", "echo -n > /dev/tcp/localhost/25565"]
+      interval: 20s
+      timeout: 5s
+      retries: 15
+      start_period: 240s       # first Paper download+build can take 4 min
+
+  bridge:
+    build: .
+    container_name: mc-bridge
+    restart: unless-stopped
+    depends_on:
+      minecraft:
+        condition: service_healthy
+    volumes:
+      # Mount config.yaml so the bridge can read it
+      - ./config.yaml:/app/config.yaml:ro
+    environment:
+      # Override Minecraft / MCPQ hostname for Docker networking
+      MINECRAFT_HOST: minecraft
+      MC_API_HOST: minecraft
+      MC_API_PORT: 1789
+      MC_API_PLAYER_NAME: AIBot
+      # LLM — set whichever provider you use
+      LLM_PROVIDER: openrouter
+      LLM_MODEL: openai/gpt-5-nano
+      LLM_OPENROUTER_API_KEY: "${OPENROUTER_API_KEY}"
+    # Array form keeps the goal as a single argument (no shell splitting)
+    command: ["--verbose", "${GOAL:-Build a house}"]
+    # The bridge has built-in retry logic (20 attempts with backoff),
+    # so even if Paper takes longer than healthcheck_start_period,
+    # the bridge will keep trying until MCPQ is ready.
+
+volumes:
+  mc-world: {}
