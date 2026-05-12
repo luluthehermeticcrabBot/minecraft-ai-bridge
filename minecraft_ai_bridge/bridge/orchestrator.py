@@ -124,13 +124,25 @@ class Orchestrator:
             self._log_context(context)
 
         # ── Think (LLM decides) ───────────────────────────────────
+        # Build message list: goal + state + explicit last-result hint
+        messages: list[Message] = [
+            Message(role=Role.USER, content=context.goal),
+            Message(role=Role.USER, content=context.state),
+        ]
+
+        # Include the last action result explicitly so the LLM can see
+        # what happened (especially failures).
+        if context.last_action_result:
+            messages.append(
+                Message(role=Role.USER, content=f"=== Last Action ===\n{context.last_action_result}")
+            )
+
+        # Append recent history (capped to avoid unbounded growth)
+        messages.extend(self._memory.recent_messages(10))
+
         response = await self._llm.decide(
             system_prompt=SYSTEM_PROMPT,
-            messages=[
-                Message(role=Role.USER, content=context.goal),
-                Message(role=Role.USER, content=context.state),
-                *self._memory.recent_messages(10),
-            ],
+            messages=messages,
         )
 
         if self._verbose:

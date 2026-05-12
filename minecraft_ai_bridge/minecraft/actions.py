@@ -298,13 +298,92 @@ async def _drop_item(mc: McpqClient, params: dict) -> ActionResult:
 # ── Combat ──────────────────────────────────────────────────────────────
 
 
+def _damage_hit_anything(resp: str | None) -> bool:
+    """Check whether a /damage command response indicates an entity was hit.
+
+    /damage returns a message like 'Damaged 1 entity' or 'No entity was
+    found'.  We also check for '0 entities' as a safety net.
+    """
+    if not resp:
+        return False
+    lower = resp.lower().strip()
+    if "no entity" in lower:
+        return False
+    if "0 entit" in lower:
+        return False
+    if "damaged" in lower or "hurt" in lower or "damage" in lower:
+        return True
+    # If none of the above patterns match, assume it worked (the damage
+    # succeeded but the output format might differ).
+    return True
+
+
 async def _attack(mc: McpqClient, params: dict) -> ActionResult:
-    resp = await _cmd(mc, "execute as @p at @p run attack")
+    # Paper 26.1.x broke "execute as @p at @p run attack" (throws
+    # CommandException).  Use /damage instead — available since MC 1.20.5.
+    target = params.get("entity_type", "")
+    if target:
+        # Target a specific player with generic damage (4 = 2 hearts)
+        try:
+            cmd = f"damage @e[type=minecraft:player,name={target},limit=1] 4"
+            resp = await _cmd(mc, cmd)
+            if _damage_hit_anything(resp):
+                return ActionResult(
+                    success=True,
+                    action=ActionType.ATTACK,
+                    message=f"Attacked {target} for 4 damage",
+                    data={"target": target, "response": resp},
+                )
+            else:
+                return ActionResult(
+                    success=False,
+                    action=ActionType.ATTACK,
+                    message=f"Attack on {target} failed — player not found or not in range",
+                    data={"target": target, "response": resp},
+                )
+        except Exception:
+            pass
+
+    # Generic attack — try /damage on the entity the player is looking at
+    try:
+        cmd = "damage @e[type=!minecraft:player,limit=1,sort=nearest] 4"
+        resp = await _cmd(mc, cmd)
+        if _damage_hit_anything(resp):
+            return ActionResult(
+                success=True,
+                action=ActionType.ATTACK,
+                message="Attacked nearest entity for 4 damage",
+                data={"response": resp},
+            )
+    except Exception:
+        pass
+
+    # Last resort: raw /damage with the target name (broader selector)
+    if target:
+        try:
+            resp = await _cmd(mc, f"damage {target} 4")
+            if _damage_hit_anything(resp):
+                return ActionResult(
+                    success=True,
+                    action=ActionType.ATTACK,
+                    message=f"Attacked {target} for 4 damage",
+                    data={"target": target, "response": resp},
+                )
+            else:
+                return ActionResult(
+                    success=False,
+                    action=ActionType.ATTACK,
+                    message=f"Attack on {target} failed — player not found",
+                    data={"target": target, "response": resp},
+                )
+        except Exception:
+            pass
+
     return ActionResult(
-        success=True,
+        success=False,
         action=ActionType.ATTACK,
-        message="Attacked",
-        data={"response": resp},
+        message=f"Attack failed — Paper 26.1.x removed execute attack. "
+                f"Try crafting/killing via commands instead.",
     )
 
 

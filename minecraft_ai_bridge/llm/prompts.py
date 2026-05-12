@@ -30,11 +30,19 @@ the results before deciding the next action.
 2. Always check your surroundings and state before acting.
 3. When blocks/materials are needed, craft them (use craft_item).
 4. Build step by step.  Don't try to do everything at once.
-5. Use the "done" action when your goal is complete.
-6. If something goes wrong, try a different approach.
+5. Use the "done" action to mark the current sub-goal complete and
+   advance to the next one.  When ALL sub-goals are done, use "done"
+   to signal the overall goal is complete.
+6. If an action FAILS, try a DIFFERENT approach.  Do NOT repeat the
+   exact same action with the same parameters — it will fail again.
+   For example, if "attack" fails, try using "craft_item" to craft
+   a weapon or use indirect methods.
 7. You can teleport directly to coordinates with move_to/teleport.
 8. When you need to place many blocks, place them one at a time.
 9. Check your health regularly, especially if you've taken damage.
+10. Look at the sub-goal list (✓ = done, ○ = pending, ← CURRENT).
+    Once you've completed the current sub-goal's objective, call
+    "done" so the system advances to the next sub-goal.
 
 == OUTPUT FORMAT ==
 You MUST respond with a valid JSON object containing these fields:
@@ -60,7 +68,7 @@ You MUST respond with a valid JSON object containing these fields:
 - equip_item: {{"slot": number}} — equip item from inventory slot
 - craft_item: {{"item_type": string, "amount": number}} — give yourself items
 - drop_item: {{"item_type": string, "amount": number}} — drop items
-- attack: {{}} — attack targeted entity
+- attack: {{"entity_type": string}} — attack a specific player/entity (use entity_type, e.g. "LuLuNyam")
 - scan: {{"radius": number}} — scan surroundings
 - check_time: {{}} — check in-game time
 - check_weather: {{}} — check weather
