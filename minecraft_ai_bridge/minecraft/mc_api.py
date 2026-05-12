@@ -1,0 +1,229 @@
+"""Async wrapper around the MCPQ plugin connection.
+
+MCPQ (Minecraft Protobuf Queries) replaces both pyCraft (bot) and most
+RCON usage — it connects to a Paper server's mcpq plugin via gRPC and
+provides direct world interaction, player control, and command execution.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+from typing import Any
+
+from mcpq import Minecraft, Vec3
+
+logger = logging.getLogger(__name__)
+
+
+class McpqClient:
+    """Async wrapper around a gRPC connection to the MCPQ plugin.
+
+    All potentially-blocking gRPC calls are dispatched to a thread-pool
+    so the rest of the bridge can stay async.
+    """
+
+    def __init__(
+        self,
+        host: str = "localhost",
+        port: int = 1789,
+        player_name: str = "AIBot",
+    ) -> None:
+        self._host = host
+        self._port = port
+        self._player_name = player_name
+        self._mc: Minecraft | None = None
+
+    # ── Connection ────────────────────────────────────────────────────
+
+    @property
+    def connected(self) -> bool:
+        return self._mc is not None
+
+    async def connect(
+        self,
+        retries: int = 20,
+        delay: float = 5.0,
+    ) -> None:
+        """Open a gRPC channel to the MCPQ plugin.
+
+        Retries with backoff so the bridge can wait for the Paper server
+        to finish starting up (downloads + builds on first run).
+
+        Parameters
+        ----------
+        retries : max number of attempts (default 20 → ~2 min at 5 s intervals)
+        delay : seconds between attempts (doubles each retry, caps at 30 s)
+        """
+        last_exc: Exception | None = None
+
+        for attempt in range(1, retries + 1):
+            try:
+                self._mc = await asyncio.to_thread(
+                    Minecraft, host=self._host, port=self._port,
+                )
+                # Verify the connection by fetching the Minecraft version
+                version = await self._run(self._mc.getMinecraftVersion)
+                server = await self._run(self._mc.getServerVersion)
+                logger.info(
+                    "Connected to MCPQ plugin — %s (MC %s)",
+                    server, version,
+                )
+                return
+            except Exception as exc:
+                last_exc = exc
+                self._mc = None
+                if attempt < retries:
+                    wait = min(delay * (1.5 ** (attempt - 1)), 30.0)
+                    logger.warning(
+                        "MCPQ not ready yet (attempt %d/%d): %s  Retrying in %.0fs …",
+                        attempt, retries,
+                        exc.__class__.__name__,
+                        wait,
+                    )
+                    await asyncio.sleep(wait)
+
+        # All retries exhausted
+        raise ConnectionError(
+            f"Failed to connect to MCPQ plugin at {self._host}:{self._port} "
+            f"after {retries} attempts.  Is the server running and the "
+            f"plugin installed?  Last error: {last_exc}"
+        ) from last_exc
+
+    async def disconnect(self) -> None:
+        """Close the gRPC channel."""
+        if self._mc is not None:
+            # gRPC channel close is best-effort
+            self._mc = None
+            logger.info("Disconnected from MCPQ plugin")
+
+    # ── Thread-pool helper ────────────────────────────────────────────
+
+    async def _run(self, func: callable, *args: Any, **kwargs: Any) -> Any:
+        """Run a synchronous function in a thread-pool."""
+        return await asyncio.to_thread(func, *args, **kwargs)
+
+    # ── Player methods ────────────────────────────────────────────────
+
+    async def get_player(self):
+        """Return the configured player's Player object, or *None*."""
+        assert self._mc is not None
+        try:
+            return await self._run(self._mc.getPlayer, self._player_name)
+        except Exception:
+            return None
+
+    async def get_player_pos(self) -> tuple[float, float, float] | None:
+        """Get (x, y, z) of the configured player, or *None*."""
+        player = await self.get_player()
+        if player is not None:
+            return (player.pos.x, player.pos.y, player.pos.z)
+        return None
+
+    async def get_player_info(self) -> dict[str, Any]:
+        """Return structured info about the configured player."""
+        player = await self.get_player()
+        if player is None:
+            return {"online": False}
+
+        nbt = None
+        try:
+            nbt = await self._run(player.getNbt)
+        except Exception:
+            pass
+
+        info: dict[str, Any] = {
+            "online": True,
+            "name": player.name,
+            "pos": {"x": player.pos.x, "y": player.pos.y, "z": player.pos.z},
+            "world": player.world.name if player.world else None,
+        }
+
+        if nbt is not None:
+            info["health"] = nbt.get("Health")
+            info["food"] = nbt.get("foodLevel")
+            info["gamemode"] = nbt.get("playerGameType")
+
+        return info
+
+    async def teleport_player(self, x: float, y: float, z: float) -> None:
+        """Teleport the configured player to an absolute position."""
+        player = await self.get_player()
+        if player is not None:
+            await self._run(player.teleport, Vec3(x, y, z))
+
+    # ── World methods ─────────────────────────────────────────────────
+
+    async def get_block(self, x: int, y: int, z: int) -> str:
+        """Return the block type name at (x, y, z), e.g. ``"stone"``."""
+        assert self._mc is not None
+        block = await self._run(self._mc.getBlock, Vec3(x, y, z))
+        return str(block.name) if block else "unknown"
+
+    async def set_block(
+        self, block_type: str, x: int, y: int, z: int,
+    ) -> None:
+        """Place ``block_type`` at (x, y, z), overwriting anything there."""
+        assert self._mc is not None
+        await self._run(self._mc.setBlock, block_type, Vec3(x, y, z))
+
+    async def set_sign(
+        self,
+        x: int, y: int, z: int,
+        lines: list[str],
+        color: str = "black",
+        glowing: bool = False,
+        direction: str = "south",
+        sign_block: str = "oak_sign",
+    ) -> None:
+        """Place a sign with text at (x, y, z).
+
+        Parameters
+        ----------
+        x, y, z : block coordinates
+        lines : up to 4 strings for each sign line
+        """
+        assert self._mc is not None
+        await self._run(
+            self._mc.setSign,
+            Vec3(x, y, z),
+            lines,
+            color=color, glowing=glowing,
+            direction=direction, sign_block=sign_block,
+        )
+
+    # ── Commands ──────────────────────────────────────────────────────
+
+    async def run_command(self, command: str) -> None:
+        """Run a server command (fire-and-forget)."""
+        assert self._mc is not None
+        await self._run(self._mc.runCommand, command)
+
+    async def run_command_blocking(self, command: str) -> str:
+        """Run a server command and return its output."""
+        assert self._mc is not None
+        return await self._run(self._mc.runCommandBlocking, command)
+
+    # ── Chat ──────────────────────────────────────────────────────────
+
+    async def post_to_chat(self, message: str) -> None:
+        """Broadcast a chat message to all players."""
+        assert self._mc is not None
+        await self._run(self._mc.postToChat, message)
+
+    # ── Utility ───────────────────────────────────────────────────────
+
+    async def get_server_version(self) -> str:
+        """Return the Paper server version string."""
+        assert self._mc is not None
+        return await self._run(self._mc.getServerVersion)
+
+    async def get_time(self) -> str:
+        """Query the current in-game time."""
+        return await self.run_command_blocking("time query daytime")
+
+    async def get_players_online(self) -> list[str]:
+        """Return list of online player names."""
+        assert self._mc is not None
+        players = await self._run(self._mc.getPlayerList)
+        return [p.name for p in players]
