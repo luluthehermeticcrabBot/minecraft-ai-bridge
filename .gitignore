@@ -29,3 +29,6 @@ mcpq-plugins/*.jar
 
 # Config
 config.local.yaml
+
+# Java / Maven build artifacts
+bot-plugin/target/

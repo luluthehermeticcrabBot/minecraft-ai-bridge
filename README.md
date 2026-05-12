@@ -57,7 +57,7 @@ The key difference from traditional RCON-based bridges: **MCPQ gives the agent d
 ### 1. Prerequisites
 
 - **Python 3.11+**
-- **Docker** (recommended for the Paper server) or an existing Paper 1.20.1 server
+- **Docker** (recommended for the Paper server) or an existing Paper 26.1.2 server
 - **An LLM API key**: OpenAI, Anthropic, OpenRouter, or a local Ollama / OpenCode Server
 
 ### 2. Clone and Install
@@ -354,7 +354,7 @@ See `docs/EXTENDING.md` for detailed guides on:
 | `No entity was found` for player ops | Fake player not spawned | Bridge auto-spawns one on connect; check `fp spawn` succeeded in logs |
 | MCPQ connection refused | Wrong host/port or MCPQ not loaded | Verify `mc_api.host`/`port`, check server logs for `mcpq` startup |
 | LLM returns 401 / auth error | Missing or invalid API key | Check env vars: `LLM_OPENAI_API_KEY`, `OPENROUTER_API_KEY`, etc. |
-| Client "I'm still on 1.20.1" | Client version too new for Paper server | Use Minecraft 1.20.1 client (Prism Launcher, MultiMC, or official launcher Installations tab) |
+| MC 26.1.2 client can't connect | Client/server version mismatch | Ensure client also runs 26.1.2 (the bridge uses headless MCPQ, no client needed) |
 | LLM re-scans endlessly | World state unclear or player can't reach goal | Check player position; try a simpler goal; enable `--verbose` to see LLM reasoning |
 | Bridge container exits immediately | MCPQ not reachable | Wait for Paper to fully start; check `docker compose logs minecraft` |
 

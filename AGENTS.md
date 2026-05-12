@@ -10,7 +10,7 @@
 - **Async**: asyncio throughout
 - **Config**: pydantic-settings (YAML + env vars)
 - **Package**: `minecraft-ai-bridge` (PyPI-style, installable with pip)
-- **Server**: Paper 1.20.1 + MCPQ plugin v2.2 + fakeplayer plugin
+- **Server**: Paper 1.21.4 + MCPQ plugin v2.2 + fakeplayer plugin
 - **Docker**: itzg/minecraft-server image with plugins mounted
 
 ## What's Built (Complete)
@@ -41,7 +41,7 @@
 
 ### Infrastructure
 - `Dockerfile` — `python:3.13-slim`, pip installs the package
-- `docker-compose.yml` — Paper server (itzg/minecraft-server:latest with PAPER type, 1.20.1) + bridge service. MCPQ on port 1789. Plugin mounts. Fakeplayer plugins.
+- `docker-compose.yml` — Paper server (itzg/minecraft-server:latest with PAPER type, 1.21.4) + bridge service. MCPQ on port 1789. Plugin mounts. Fakeplayer plugins.
 - `scripts/download-plugins.sh` — downloads MCPQ v2.2 jar
 - `mcpq-config/config.yml` — MCPQ bound to `0.0.0.0:1789`
 - `mcpq-plugins/` — mounted plugin directory
@@ -68,9 +68,13 @@
 - **No inventory tracking**: Inventory is read via `/data get entity @p Inventory`. The observer grabs it raw but doesn't parse into structured slots. LLM sees raw NBT.
 
 ### Paper / MCPQ
-- **Paper 1.20.1 only**: MCPQ v2.2 targets 1.20.1. Upgrading MC version requires MCPQ compatibility check.
-- **fakeplayer plugin**: tanyaofei/minecraft-fakeplayer v0.3.19 with CommandAPI 9.7.0. The player sometimes teleports back to original spawn coordinates — the bridge re-teleports on reconnect.
-- **Plugin version pinning**: MCPQ and fakeplayer jars are downloaded from GitHub releases. If URLs change, `download-plugins.sh` needs updating.
+- **Paper 26.1.2** (Mojang YY numbering, April 2026): MCPQ v2.2 works. Paper API 26.1.2.build.63-stable.
+- **Bot plugin**: Custom `mc-bot-plugin-1.0.0.jar` replaces tanyaofei/fakeplayer. Built in `bot-plugin/` (Maven, Java 25). Provides `/botsummon <name>` command that creates a ServerPlayer entity MCPQ can detect.
+- **Plugin version pinning**: MCPQ jar is downloaded from GitHub releases. The bot plugin is built locally.
+- **Known Paper 26.1.2 issues**:
+  - `time query daytime` throws CommandException — use `time query day` instead (fixed in bridge code)
+  - `setblock` commands via MCPQ may have array-related issues (mitigated in MCPQ client)
+  - `defaultgamemode` command format changed (use `gamemode` instead)
 
 ### Docker
 - **Health check timing**: First Paper startup takes 2-5 minutes. The health check has a 240s start period. The bridge retries for 20 attempts with backoff.
@@ -162,7 +166,7 @@ Some LLMs (especially smaller/local ones) can't reliably output structured JSON 
 
 - **Python**: 3.11+ required (built on 3.13)
 - **OS**: Linux (Docker: python:3.13-slim)
-- **Paper**: 1.20.1 via itzg/minecraft-server
+- **Paper**: 1.21.4 via itzg/minecraft-server
 - **MCPQ plugin**: v2.2
 - **fakeplayer**: v0.3.19 + CommandAPI 9.7.0
 - **Docker compose**: v2 format
