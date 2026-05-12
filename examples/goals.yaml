@@ -1,0 +1,48 @@
+# ── Example goals for the Minecraft AI Bridge ──────────────────────────
+#
+# These show the range of goals the agent can handle.
+# Pass one on the CLI: minecraft-ai-bridge "Build a house"
+
+- goal: "Build a small wooden house (5x5 floor, walls, roof, door)"
+  complexity: medium
+  subgoals:
+    - "Gather wood by breaking trees or crafting logs"
+    - "Craft planks and a crafting table"
+    - "Build a 5x5 wooden floor"
+    - "Build walls 3 blocks high"
+    - "Add a door"
+    - "Build a roof"
+
+- goal: "Explore and find a village"
+  complexity: easy
+  subgoals:
+    - "Scan surroundings to identify current biome"
+    - "Travel in a direction looking for plains/savanna biomes"
+    - "Look for village structures (roads, houses, farms)"
+    - "Mark the village coordinates"
+
+- goal: "Mine 10 iron ore and smelt it into iron ingots"
+  complexity: hard
+  subgoals:
+    - "Craft a stone pickaxe"
+    - "Find a cave or dig down to y-level 16-48 (iron level)"
+    - "Mine 10 iron ore blocks"
+    - "Craft a furnace"
+    - "Smelt iron ore into iron ingots using fuel (coal/charcoal/wood)"
+
+- goal: "Defend yourself against mobs at night"
+  complexity: medium
+  subgoals:
+    - "Craft a sword (wooden or stone)"
+    - "Check the time of day"
+    - "When night falls, locate and attack hostile mobs"
+    - "Monitor health and retreat if necessary"
+
+- goal: "Plant and harvest a small wheat farm"
+  complexity: medium
+  subgoals:
+    - "Find or till grass blocks to get seeds"
+    - "Till soil near water"
+    - "Plant wheat seeds"
+    - "Wait for growth (use bone meal or wait)"
+    - "Harvest mature wheat"
