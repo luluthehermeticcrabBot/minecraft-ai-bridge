@@ -10,8 +10,7 @@ services:
     environment:
       EULA: "TRUE"
       TYPE: PAPER
-      VERSION: "1.20.1"
-      PAPER_RELEASE_CHANNEL: "stable"
+      VERSION: "26.1.2"
       # RCON (optional fallback)
       ENABLE_RCON: "true"
       RCON_PASSWORD: "changeme"

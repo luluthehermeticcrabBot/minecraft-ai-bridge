@@ -219,8 +219,13 @@ class McpqClient:
         return await self._run(self._mc.getServerVersion)
 
     async def get_time(self) -> str:
-        """Query the current in-game time."""
-        return await self.run_command_blocking("time query daytime")
+        """Query the current in-game time.
+
+        Uses ``time query day`` instead of the legacy ``time query daytime``
+        which is broken on Paper 26.1.2 (throws CommandException).
+        The result gives total in-game ticks (days × 24000 + daytime).
+        """
+        return await self.run_command_blocking("time query day")
 
     async def get_players_online(self) -> list[str]:
         """Return list of online player names."""
