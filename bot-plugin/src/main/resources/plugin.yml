@@ -1,0 +1,13 @@
+name: MCPQ-Bot
+version: 1.0.0
+main: io.opencode.minecraft.bot.BotPlugin
+api-version: '1.21'
+commands:
+  botsummon:
+    description: Summon a bot player
+    usage: /botsummon <name>
+    permission: mcbot.command.botsummon
+permissions:
+  mcbot.command.botsummon:
+    description: Allows summoning a bot player
+    default: op

@@ -11,7 +11,7 @@ This guide covers all installation methods and configuration options for the Min
 
 ## Method 1: Docker (Recommended)
 
-This starts a complete Paper 1.20.1 server with MCPQ and fakeplayer plugins, then runs the bridge.
+This starts a complete Paper 26.1.2 server with MCPQ and the built-in bot plugin, then runs the bridge.
 
 ### Step 1: Clone and Download
 
@@ -116,11 +116,10 @@ cp config.yaml config.yaml
 
 ### Step 3: Have a Paper Server with MCPQ
 
-You need a Paper 1.20.1 server with:
+You need a Paper 26.1.2 server with:
 1. [MCPQ plugin](https://github.com/mcpq/mcpq-plugin) v2.2+
-2. [fakeplayer plugin](https://github.com/tanyaofei/minecraft-fakeplayer) for player control
-3. [CommandAPI](https://commandapi.jorel.dev/) (dependency for fakeplayer)
-4. MCPQ configured to listen on `0.0.0.0:1789`
+2. The included bot plugin (`bot-plugin/`) — provides `/botsummon <name>` for player entity creation
+3. MCPQ configured to listen on `0.0.0.0:1789`
 
 If using a local server without Docker, ensure MCPQ's `config.yml` has:
 
@@ -149,11 +148,12 @@ minecraft-ai-bridge --list-providers
 
 If not using Docker, here's how to set up the server manually.
 
-### 1. Install Paper 1.20.1
+### 1. Install Paper 26.1.2
 
 ```bash
-# Download Paper
-wget https://api.papermc.io/v2/projects/paper/versions/1.20.1/builds/196/downloads/paper-1.20.1-196.jar -O paper.jar
+# Download latest Paper 26.1.2 build
+PAPER_BUILD=$(curl -s "https://api.papermc.io/v2/projects/paper/versions/26.1.2/builds" | python3 -c "import json,sys; print(json.load(sys.stdin)['builds'][-1]['build'])")
+wget "https://api.papermc.io/v2/projects/paper/versions/26.1.2/builds/${PAPER_BUILD}/downloads/paper-26.1.2-${PAPER_BUILD}.jar" -O paper.jar
 
 # First run to generate files
 java -jar paper.jar nogui
@@ -162,18 +162,18 @@ java -jar paper.jar nogui
 echo "eula=true" > eula.txt
 ```
 
-### 2. Download Plugins
+### 2. Download and Build Plugins
 
 ```bash
 # MCPQ plugin
 MCPQ_VERSION=2.2
 wget https://github.com/mcpq/mcpq-plugin/releases/download/v${MCPQ_VERSION}/mcpq-${MCPQ_VERSION}.jar -P plugins/
 
-# CommandAPI (dependency for fakeplayer)
-wget https://github.com/JorelAli/CommandAPI/releases/download/9.7.0/CommandAPI-9.7.0.jar -P plugins/
-
-# Fakeplayer plugin
-wget https://github.com/tanyaofei/minecraft-fakeplayer/releases/download/0.3.19/fakeplayer-0.3.19.jar -P plugins/
+# Build the bot plugin (provides /botsummon for player entity)
+cd bot-plugin
+mvn clean package -DskipTests
+cp target/mc-bot-plugin-*.jar ../mcpq-plugins/
+cd ..
 ```
 
 ### 3. Configure MCPQ

@@ -264,8 +264,9 @@ class Orchestrator:
         logger.info("Connected to MCPQ — player name: %s", api_cfg.player_name)
 
         # ── Ensure a fake player entity exists ────────────────────────
-        # The fakeplayer plugin (tanyaofei/minecraft-fakeplayer) creates
-        # a ServerPlayer that MCPQ can detect and control.
+        # The MCPQ-Bot Paper plugin (/botsummon) creates a ServerPlayer
+        # that MCPQ can detect and control. Without this, player-relative
+        # selectors like @p and MCPQ's getPlayers won't work.
         player_name = api_cfg.player_name
         logger.info("Checking if player '%s' exists …", player_name)
 
@@ -277,33 +278,20 @@ class Orchestrator:
             else:
                 raise ValueError("pos is None")
         except Exception:
-            # Player doesn't exist yet — spawn via command
-            logger.info("Player '%s' not found — spawning fake player …", player_name)
+            # Player doesn't exist yet — spawn via /botsummon
+            logger.info("Player '%s' not found — summoning bot …", player_name)
             try:
                 spawn_result = await self._mc.run_command_blocking(
-                    f"fp spawn {player_name}"
+                    f"botsummon {player_name}"
                 )
-                logger.info("Fake player spawn command: %s", spawn_result or "OK")
+                logger.info("Bot summon command: %s", spawn_result or "OK")
             except Exception as spawn_err:
                 logger.warning(
-                    "Failed to spawn fake player via /fp: %s  "
-                    "Will try fallback …",
+                    "Failed to summon bot via /botsummon: %s  "
+                    "Continuing anyway — some MCPQ ops will fail "
+                    "without a player entity.",
                     spawn_err,
                 )
-                # Fallback: try Minecraft's /player command if Carpet-like
-                # plugin uses it, else try /summon mechanics
-                try:
-                    spawn_result = await self._mc.run_command_blocking(
-                        f"player {player_name} spawn"
-                    )
-                    logger.info("Fallback spawn: %s", spawn_result or "OK")
-                except Exception as spawn_err2:
-                    logger.warning(
-                        "Both spawn attempts failed: %s.  "
-                        "Continuing anyway — some MCPQ ops will fail "
-                        "without a player entity.",
-                        spawn_err2,
-                    )
 
             # Give the server a moment to process the new player
             await asyncio.sleep(2)
