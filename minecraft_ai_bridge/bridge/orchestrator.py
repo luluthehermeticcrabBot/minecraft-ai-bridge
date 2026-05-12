@@ -1,0 +1,373 @@
+"""The bridge orchestrator — ties LLM, Minecraft, goals, and memory together
+into a continuous think–act–observe loop.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+from dataclasses import dataclass, field
+from typing import Any
+
+from ..config import AppConfig
+from ..llm.client import LLMClient, create_llm_client
+from ..llm.models import LLMResponse, Message, Role
+from ..llm.prompts import SYSTEM_PROMPT, format_goal, format_state
+from ..minecraft import ActionType, ActionResult, execute_action
+from ..minecraft import McpqClient, Observer, WorldState
+
+from .goal_manager import GoalManager
+from .memory import AgentMemory
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class AgentContext:
+    """Full context available to the LLM on each decision turn."""
+
+    goal: str = ""
+    current_task: str = ""
+    state: str = ""
+    memory: str = ""
+    notable_facts: str = ""
+    last_action_result: str = ""
+    turn: int = 0
+
+
+class Orchestrator:
+    """Main agent loop.
+
+    Usage::
+
+        config = AppConfig.from_yaml("config.yaml")
+        orch = Orchestrator(config)
+        await orch.run("Build a house")
+    """
+
+    def __init__(self, config: AppConfig) -> None:
+        self._config = config
+        self._llm: LLMClient = create_llm_client(config)
+        self._mc: McpqClient | None = None
+        self._observer: Observer | None = None
+        self._memory = AgentMemory(window=config.bridge.memory_window)
+        self._goals = GoalManager(
+            llm_client=self._llm,
+            max_depth=config.goals.max_depth,
+        )
+        self._last_result: ActionResult | None = None
+        self._turn = 0
+        self._verbose = config.bridge.verbose
+        self._max_iterations = config.bridge.max_iterations
+
+    # ── Public API ───────────────────────────────────────────────────
+
+    async def run(self, goal: str | None = None) -> None:
+        """Run the full agent loop until the goal is complete or
+        ``max_iterations`` is reached."""
+        goal_text = goal or self._config.goals.default
+        logger.info("╔══ Starting AI Agent ══╗")
+        logger.info("║ Goal: %s", goal_text)
+        logger.info("║ LLM:  %s / %s", self._config.llm.provider, self._config.llm.model)
+        logger.info("╚════════════════════════╝")
+
+        # 1. Connect to Minecraft via MCPQ
+        api_cfg = self._config.mc_api
+        logger.info(
+            "Connecting to MCPQ plugin at %s:%s ...",
+            api_cfg.host, api_cfg.port,
+        )
+        await self._connect()
+        logger.info("MCPQ connected — controlling player: %s", api_cfg.player_name)
+
+        # 2. Set up goal hierarchy
+        logger.info("Decomposing goal into sub-tasks via LLM ...")
+        await self._goals.set_goal(goal_text)
+        logger.info("Goal decomposition complete — %d sub-goals",
+                     len(self._goals._root.sub_goals) if self._goals._root else 0)
+
+        # 3. Main loop
+        done = False
+        while not done and self._turn < self._max_iterations:
+            self._turn += 1
+            try:
+                done = await self._step()
+            except Exception as exc:
+                logger.exception("Fatal error on turn %d", self._turn)
+                await self._chat(f"Error on turn {self._turn}: {exc}")
+                # Try to recover
+                await asyncio.sleep(5)
+
+        logger.info(
+            "Agent finished after %d turns. Goal complete: %s",
+            self._turn,
+            self._goals.is_complete,
+        )
+        await self._disconnect()
+
+    # ── Core step ────────────────────────────────────────────────────
+
+    async def _step(self) -> bool:
+        """One iteration of the think–act–observe loop.
+
+        Returns True if the agent should stop.
+        """
+        logger.info("─── Turn %d ───", self._turn)
+
+        # ── Observe ──────────────────────────────────────────────
+        world = await self._observe()
+
+        # ── Build context for LLM ─────────────────────────────────
+        context = self._build_context(world)
+        if self._verbose:
+            self._log_context(context)
+
+        # ── Think (LLM decides) ───────────────────────────────────
+        response = await self._llm.decide(
+            system_prompt=SYSTEM_PROMPT,
+            messages=[
+                Message(role=Role.USER, content=context.goal),
+                Message(role=Role.USER, content=context.state),
+                *self._memory.recent_messages(10),
+            ],
+        )
+
+        if self._verbose:
+            logger.info("LLM decision: %s → %s", response.action, json.dumps(response.action_params))
+
+        # ── Act ───────────────────────────────────────────────────
+        result = await self._act(response)
+
+        # ── Record ────────────────────────────────────────────────
+        self._memory.record_action(response.action, {
+            "success": result.success,
+            "message": result.message,
+            "data": result.data,
+        })
+
+        if self._verbose:
+            logger.info("Result: %s — %s", "✓" if result.success else "✗", result.message)
+
+        # ── Check termination ─────────────────────────────────────
+        if response.action == "done" and result.success:
+            self._goals.mark_current_complete()
+            if self._goals.is_complete:
+                return True
+            # Check if there's a next sub-goal
+            if self._goals.current_goal:
+                await self._chat(f"Starting next task: {self._goals.current_goal}")
+                return False
+
+        return self._turn >= self._max_iterations
+
+    # ── Sub-routines ────────────────────────────────────────────────
+
+    async def _observe(self) -> WorldState:
+        """Gather world state and record it in memory."""
+        assert self._observer is not None
+        state = await self._observer.observe()
+        self._memory.record_observation(state)
+        return state
+
+    def _build_context(self, world: WorldState) -> AgentContext:
+        """Build structured context for the LLM prompt."""
+        state_dict = world.__dict__ if hasattr(world, "__dict__") else {}
+        state_str = format_state(state_dict)
+
+        # Goal context
+        goal_context = (
+            f"=== Goal ===\n"
+            f"{self._goals.progress}\n\n"
+            f"Current task: {self._goals.current_goal}"
+        )
+
+        # Memory context
+        memory_str = self._memory.short_term_summary
+        if not memory_str.strip():
+            memory_str = "(no recent actions)"
+
+        facts = self._memory.notable_facts()
+
+        # Last action result
+        last_result = ""
+        if self._last_result:
+            last_result = (
+                f"Last action: {self._last_result.action.value}\n"
+                f"Success: {self._last_result.success}\n"
+                f"Message: {self._last_result.message}"
+            )
+
+        return AgentContext(
+            goal=goal_context,
+            current_task=self._goals.current_goal,
+            state=f"=== World State ===\n{state_str}",
+            memory=f"=== Recent Actions ===\n{memory_str}",
+            notable_facts=facts,
+            last_action_result=last_result,
+            turn=self._turn,
+        )
+
+    async def _act(self, response: LLMResponse) -> ActionResult:
+        """Execute the LLM's chosen action via the MCPQ plugin."""
+        assert self._mc is not None
+
+        try:
+            action_type = ActionType(response.action)
+        except ValueError:
+            logger.warning("Unknown action: %s", response.action)
+            return ActionResult(
+                success=False,
+                action=ActionType.WAIT,
+                message=f"Unknown action: {response.action}",
+            )
+
+        result = await execute_action(
+            self._mc,
+            action_type,
+            response.action_params,
+        )
+
+        self._last_result = result
+
+        # Record important discoveries
+        if action_type == ActionType.CHECK_POSITION and result.success:
+            pos = result.data.get("position_raw", "")
+            if pos:
+                self._memory.remember_fact(f"Position data: {pos}")
+
+        # Rate-limit delay
+        await asyncio.sleep(self._config.bridge.cycle_delay)
+
+        return result
+
+    async def _chat(self, message: str) -> None:
+        """Send a chat message as the agent."""
+        if self._mc and self._mc.connected:
+            try:
+                await self._mc.post_to_chat(message)
+            except Exception:
+                pass
+
+    # ── Connection management ────────────────────────────────────────
+
+    async def _connect(self) -> None:
+        """Connect to the Minecraft server via the MCPQ plugin."""
+        api_cfg = self._config.mc_api
+        self._mc = McpqClient(
+            host=api_cfg.host,
+            port=api_cfg.port,
+            player_name=api_cfg.player_name,
+        )
+        await self._mc.connect()
+        self._observer = Observer(self._mc)
+        logger.info("Connected to MCPQ — player name: %s", api_cfg.player_name)
+
+        # ── Ensure a fake player entity exists ────────────────────────
+        # The fakeplayer plugin (tanyaofei/minecraft-fakeplayer) creates
+        # a ServerPlayer that MCPQ can detect and control.
+        player_name = api_cfg.player_name
+        logger.info("Checking if player '%s' exists …", player_name)
+
+        try:
+            # Try getting the player's position — if it works, they exist
+            pos = await self._mc.get_player_pos()
+            if pos is not None:
+                logger.info("Player '%s' already present at %s", player_name, pos)
+            else:
+                raise ValueError("pos is None")
+        except Exception:
+            # Player doesn't exist yet — spawn via command
+            logger.info("Player '%s' not found — spawning fake player …", player_name)
+            try:
+                spawn_result = await self._mc.run_command_blocking(
+                    f"fp spawn {player_name}"
+                )
+                logger.info("Fake player spawn command: %s", spawn_result or "OK")
+            except Exception as spawn_err:
+                logger.warning(
+                    "Failed to spawn fake player via /fp: %s  "
+                    "Will try fallback …",
+                    spawn_err,
+                )
+                # Fallback: try Minecraft's /player command if Carpet-like
+                # plugin uses it, else try /summon mechanics
+                try:
+                    spawn_result = await self._mc.run_command_blocking(
+                        f"player {player_name} spawn"
+                    )
+                    logger.info("Fallback spawn: %s", spawn_result or "OK")
+                except Exception as spawn_err2:
+                    logger.warning(
+                        "Both spawn attempts failed: %s.  "
+                        "Continuing anyway — some MCPQ ops will fail "
+                        "without a player entity.",
+                        spawn_err2,
+                    )
+
+            # Give the server a moment to process the new player
+            await asyncio.sleep(2)
+
+        # ── Teleport to a safe location ─────────────────────────────
+        # The fake player often spawns underwater or in unsafe terrain.
+        # We teleport to a high Y (above any terrain) and build a solid
+        # platform underneath so the bot stands on dry land.
+        safe_x, safe_y, safe_z = 0, 65, 0
+        logger.info(
+            "Teleporting player '%s' to (%d, %d, %d) …",
+            player_name, safe_x, safe_y, safe_z,
+        )
+        for attempt in range(3):
+            try:
+                await self._mc.teleport_player(float(safe_x), float(safe_y), float(safe_z))
+                # Build a 3×3 solid platform under the player
+                for dx in (-1, 0, 1):
+                    for dz in (-1, 0, 1):
+                        try:
+                            await self._mc.set_block(
+                                "dirt", safe_x + dx, safe_y - 1, safe_z + dz,
+                            )
+                        except Exception:
+                            pass
+                await asyncio.sleep(2)
+                safe_pos = await self._mc.get_player_pos()
+                if safe_pos:
+                    logger.info(
+                        "Player at (%.1f, %.1f, %.1f) — feet: %s",
+                        *safe_pos,
+                        await self._mc.get_block(
+                            int(safe_pos[0]), int(safe_pos[1]) - 1, int(safe_pos[2]),
+                        ),
+                    )
+                    break
+                logger.warning("Teleport attempt %d: position unknown", attempt + 1)
+            except Exception as safe_err:
+                logger.warning("Safe teleport attempt %d failed: %s",
+                               attempt + 1, safe_err)
+                await asyncio.sleep(2)
+
+        # Greet
+        await self._chat("AI Agent online and ready!")
+
+    async def _disconnect(self) -> None:
+        """Clean up the MCPQ connection."""
+        if self._mc:
+            await self._chat("AI Agent signing off.")
+            await self._mc.disconnect()
+
+    # ── Logging ──────────────────────────────────────────────────────
+
+    def _log_context(self, ctx: AgentContext) -> None:
+        """Pretty-print context in verbose mode."""
+        border = "─" * 60
+        logger.debug(
+            "\n%s\n[TURN %d]\n%s\n%s\n%s\n%s\n%s\n%s",
+            border,
+            ctx.turn,
+            ctx.goal,
+            ctx.state,
+            ctx.memory,
+            ctx.notable_facts,
+            ctx.last_action_result,
+            border,
+        )
