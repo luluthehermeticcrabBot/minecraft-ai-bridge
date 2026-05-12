@@ -99,6 +99,40 @@ _FALLBACK_PLANS: list[tuple[re.Pattern, str, list[str]]] = [
             "Report notable findings",
         ],
     ),
+    (
+        re.compile(r"teleport|coordinate|tp|move.*to|go.*to|travel", re.IGNORECASE),
+        "Teleport to coordinates",
+        [
+            f"Identify the target coordinates from the goal",
+            f"Teleport directly to the target coordinates",
+            f"Confirm arrival by checking position",
+            f"Proceed with remaining goal instructions at the destination",
+        ],
+    ),
+    (
+        re.compile(r"attack|kill|combat|fight|battle|hunt|pvp|murder", re.IGNORECASE),
+        "Combat engagement",
+        [
+            "Locate the target — scan and check player list for their name",
+            "Teleport near the target if they are not at your location",
+            "Ensure you are holding a weapon (craft one if needed)",
+            "Attack the target using the attack action with entity_type set to their name",
+            "Monitor their health and your own — retreat or continue as needed",
+            "Repeat attacks until the target is defeated or you are killed",
+            "Signal combat complete",
+        ],
+    ),
+    (
+        re.compile(r"describe|report|say|tell|announce|chat.*what", re.IGNORECASE),
+        "Observe and describe surroundings",
+        [
+            "Scan surroundings with a radius of at least 10",
+            "Check current position, time, and weather",
+            "Compose a description including notable blocks, structures, and entities",
+            "Post the description to in-game chat",
+            "Proceed with any remaining goal instructions",
+        ],
+    ),
 ]
 
 
@@ -171,14 +205,16 @@ class GoalManager:
                 logger.info("Fallback plan matched: %s (%d steps)", _name, len(steps))
                 break
         else:
-            # Generic fallback for unrecognized goals
+            # Generic fallback for unrecognized goals.
+            # Keep steps concrete by embedding the goal description so the
+            # agent can meaningfully complete each one and call "done".
             steps = [
-                f"Assess current situation — check inventory, position, and surroundings",
-                f"Plan the first concrete step toward: {description}",
-                f"Execute the planned action",
-                f"Check progress and adjust approach if needed",
-                f"Repeat until the goal is complete",
-                f"Verify completion and report results",
+                f"Check position, inventory, and scan surroundings. Goal: {description}",
+                f"Take the first concrete action toward the goal: {description}",
+                f"Continue progressing on the goal: {description}",
+                f"Keep working on remaining objectives: {description}",
+                f"Verify everything is complete for: {description}",
+                f"Signal the goal is fully done: {description}",
             ]
             logger.info("No keyword match; using generic fallback plan.")
 
