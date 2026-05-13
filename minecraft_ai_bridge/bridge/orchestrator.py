@@ -11,13 +11,15 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ..config import AppConfig
-from ..llm.client import LLMClient, create_llm_client
+from ..llm.client import LLMClient, OpenCodeServerClient, create_llm_client
 from ..llm.models import LLMResponse, Message, Role
 from ..llm.prompts import SYSTEM_PROMPT, format_goal, format_state
 from ..minecraft import ActionType, ActionResult, execute_action
 from ..minecraft import McpqClient, Observer, WorldState
 
+from .chat_commands import ChatCommandHandler
 from .goal_manager import GoalManager
+from .inventory_manager import InventoryManager
 from .memory import AgentMemory
 
 logger = logging.getLogger(__name__)
@@ -60,6 +62,16 @@ class Orchestrator:
         self._turn = 0
         self._verbose = config.bridge.verbose
         self._max_iterations = config.bridge.max_iterations
+        self._consecutive_failures = 0
+        self._max_failures = 5
+
+        # Chat command interface (N4)
+        self._cmd_handler: ChatCommandHandler | None = None
+        self._stop_requested = False
+        self._follow_target: str | None = None
+
+        # Inventory manager (N1)
+        self._inventory: InventoryManager | None = None
 
     # ── Public API ───────────────────────────────────────────────────
 
@@ -85,7 +97,7 @@ class Orchestrator:
         logger.info("Decomposing goal into sub-tasks via LLM ...")
         await self._goals.set_goal(goal_text)
         logger.info("Goal decomposition complete — %d sub-goals",
-                     len(self._goals._root.sub_goals) if self._goals._root else 0)
+                     self._goals.sub_goal_count)
 
         # 3. Main loop
         done = False
@@ -94,10 +106,33 @@ class Orchestrator:
             try:
                 done = await self._step()
             except Exception as exc:
-                logger.exception("Fatal error on turn %d", self._turn)
-                await self._chat(f"Error on turn {self._turn}: {exc}")
-                # Try to recover
-                await asyncio.sleep(5)
+                self._consecutive_failures += 1
+                logger.exception(
+                    "Fatal error on turn %d (consecutive failures: %d)",
+                    self._turn, self._consecutive_failures,
+                )
+                await self._chat(
+                    f"Error on turn {self._turn}: {exc}. "
+                    f"Consecutive failures: {self._consecutive_failures}"
+                )
+
+                # Backoff sleep after unexpected crashes
+                await asyncio.sleep(min(5 * self._consecutive_failures, 30))
+
+            # Check for graceful shutdown on consecutive failures
+            if self._stop_requested or self._consecutive_failures >= self._max_failures:
+                if self._stop_requested:
+                    logger.info("Stop requested via in-game command.")
+                    await self._chat("Shutting down as requested.")
+                else:
+                    logger.error(
+                        "Too many consecutive failures (%d). Shutting down.",
+                        self._consecutive_failures,
+                    )
+                    await self._chat(
+                        f"Too many errors ({self._consecutive_failures}). Shutting down."
+                    )
+                break
 
         logger.info(
             "Agent finished after %d turns. Goal complete: %s",
@@ -114,6 +149,34 @@ class Orchestrator:
         Returns True if the agent should stop.
         """
         logger.info("─── Turn %d ───", self._turn)
+
+        # ── Check for in-game commands (N4) ──────────────────────
+        if self._cmd_handler:
+            try:
+                await self._cmd_handler.poll()
+            except Exception:
+                pass
+        if self._stop_requested:
+            return True
+
+        # ── Follow-mode support (N4) ─────────────────────────────
+        if self._follow_target:
+            try:
+                pos = await self._mc.get_player_pos()
+                if pos:
+                    await self._mc.run_command_blocking(
+                        f"execute as {self._follow_target} at @s "
+                        f"run tp @p ~ ~ ~"
+                    )
+            except Exception:
+                pass
+
+        # ── Periodic inventory refresh (N1) ──────────────────────
+        if self._inventory and self._turn % 5 == 0:
+            try:
+                await self._inventory.refresh()
+            except Exception:
+                pass
 
         # ── Observe ──────────────────────────────────────────────
         world = await self._observe()
@@ -150,6 +213,12 @@ class Orchestrator:
 
         # ── Act ───────────────────────────────────────────────────
         result = await self._act(response)
+
+        # Track consecutive failures — count both action failures and exceptions
+        if result.success:
+            self._consecutive_failures = 0
+        else:
+            self._consecutive_failures += 1
 
         # ── Record ────────────────────────────────────────────────
         self._memory.record_action(response.action, {
@@ -305,8 +374,23 @@ class Orchestrator:
                     spawn_err,
                 )
 
-            # Give the server a moment to process the new player
-            await asyncio.sleep(2)
+            # Poll until the player entity is confirmed present
+            logger.info("Waiting for player '%s' to be registered …", player_name)
+            for poll_attempt in range(10):
+                await asyncio.sleep(1)
+                try:
+                    pos = await self._mc.get_player_pos()
+                    if pos is not None:
+                        logger.info("Player '%s' confirmed at %s", player_name, pos)
+                        break
+                except Exception:
+                    pass
+            else:
+                logger.warning(
+                    "Player '%s' not confirmed after polling. "
+                    "Continuing — some MCPQ ops may fail.",
+                    player_name,
+                )
 
         # ── Teleport to a safe location ─────────────────────────────
         # The fake player often spawns underwater or in unsafe terrain.
@@ -346,14 +430,42 @@ class Orchestrator:
                                attempt + 1, safe_err)
                 await asyncio.sleep(2)
 
+        # Initialise sub-systems (N1 inventory, N4 chat commands)
+        self._inventory = InventoryManager(self._mc)
+        try:
+            await self._inventory.refresh()
+            logger.info("Initial inventory: %s", self._inventory.summary)
+        except Exception:
+            logger.debug("Initial inventory refresh failed (expected if player just spawned)")
+
+        self._cmd_handler = ChatCommandHandler(self)
+
+        # Persist the goal in memory database (N3)
+        root_desc = self._goals.root_description
+        self._memory.save_goal(root_desc if root_desc else "Unknown goal")
+
         # Greet
         await self._chat("AI Agent online and ready!")
 
     async def _disconnect(self) -> None:
-        """Clean up the MCPQ connection."""
+        """Clean up the MCPQ connection, memory database, and other resources."""
         if self._mc:
             await self._chat("AI Agent signing off.")
             await self._mc.disconnect()
+
+        # Persist memory database (N3)
+        if hasattr(self._memory, "close"):
+            try:
+                self._memory.close()
+            except Exception:
+                pass
+
+        # Clean up OpenCodeServerClient HTTP session if applicable
+        if isinstance(self._llm, OpenCodeServerClient):
+            try:
+                await self._llm.close()
+            except Exception:
+                pass
 
     # ── Logging ──────────────────────────────────────────────────────
 

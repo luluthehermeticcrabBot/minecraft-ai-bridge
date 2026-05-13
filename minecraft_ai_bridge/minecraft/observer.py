@@ -20,15 +20,32 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
+class InventorySlot:
+    """A single item stack in the player's inventory."""
+
+    item_id: str
+    count: int
+    slot: int
+    damage: int = 0
+
+    @property
+    def display_name(self) -> str:
+        """Human-readable item name (strip Minecraft namespace)."""
+        return self.item_id.replace("minecraft:", "").replace("_", " ")
+
+
+@dataclass
 class WorldState:
     """Snapshot of the player's current world state."""
 
     position: tuple[float, float, float] | None = None
     health: float | None = None
     inventory_raw: str = ""
+    inventory: list[InventorySlot] = field(default_factory=list)
     time_raw: str = ""
     weather_raw: str = ""
     players: list[str] = field(default_factory=list)
+    biome: str = ""
     scan_data: dict[str, Any] = field(default_factory=dict)
     last_action_result: str = ""
 
@@ -71,6 +88,7 @@ class Observer:
 
         if isinstance(inv_res, ActionResult) and inv_res.success:
             state.inventory_raw = inv_res.data.get("raw_inventory", "")
+            state.inventory = _parse_inventory_nbt(state.inventory_raw)
 
         if isinstance(time_res, ActionResult) and time_res.success:
             state.time_raw = time_res.data.get("time_raw", "")
@@ -82,6 +100,17 @@ class Observer:
         scan_res = await self._exec(ActionType.SCAN, {"radius": 5})
         if isinstance(scan_res, ActionResult) and scan_res.success:
             state.scan_data = scan_res.data
+
+        # Best-effort biome detection
+        if state.position:
+            try:
+                state.biome = await self._mc.get_biome(
+                    int(state.position[0]),
+                    int(state.position[1]),
+                    int(state.position[2]),
+                )
+            except Exception:
+                pass
 
         return state
 
@@ -97,6 +126,7 @@ class Observer:
 
 # ── Simple NBT-value parsers (for command output) ──────────────────────
 
+import json  # noqa: E402
 import re  # noqa: E402 — import after class uses
 
 _NBT_LIST_RE = re.compile(r"\[([^\]]+)\]")
@@ -115,6 +145,68 @@ def _parse_nbt_value(raw: str) -> Any:
             return float(val)
         return int(float(val))
     return raw
+
+
+def _parse_inventory_nbt(raw: str) -> list[InventorySlot]:
+    """Parse raw NBT inventory string into structured InventorySlot list.
+
+    Handles formats like::
+        [{id:"minecraft:dirt",Count:64b,Slot:0b},{id:"minecraft:stone",Count:32b,Slot:1b}]
+
+    Returns an empty list on any parse failure (callers should fall back
+    to the raw string).
+    """
+    if not raw or raw == "Inventory: []":
+        return []
+
+    # Normalise: convert JSON-like NBT to proper JSON
+    text = raw.strip()
+    if text.startswith("Inventory: "):
+        text = text[len("Inventory: "):]
+
+    text = text.replace("}", "},")
+    # Remove trailing comma from array
+    text = text.rstrip(",")
+
+    # Try a simple regex-based approach first (faster for well-formed data)
+    items: list[InventorySlot] = []
+    # Pattern: {id:"...",Count:...b,Slot:...b,...}
+    item_pattern = re.compile(
+        r'id:\s*"([^"]+)"\s*,\s*'
+        r'Count:\s*(\d+)\s*b\s*,\s*'
+        r'Slot:\s*(-?\d+)\s*b',
+    )
+    for match in item_pattern.finditer(raw):
+        items.append(InventorySlot(
+            item_id=match.group(1),
+            count=int(match.group(2)),
+            slot=int(match.group(3)),
+        ))
+
+    # If regex found items, return them
+    if items:
+        return items
+
+    # Fallback: try JSON parsing (for simulators / test data)
+    try:
+        # Convert NBT-style booleans and byte suffixes to JSON
+        clean = text
+        # Remove trailing 'b' from numbers
+        clean = re.sub(r'(\d+)b', r'\1', clean)
+        # Quote bare keys
+        clean = re.sub(r'(\w+):', r'"\1":', clean)
+        parsed = json.loads(clean)
+        if isinstance(parsed, list):
+            for entry in parsed:
+                items.append(InventorySlot(
+                    item_id=entry.get("id", "unknown"),
+                    count=int(entry.get("Count", 1)),
+                    slot=int(entry.get("Slot", 0)),
+                ))
+    except (json.JSONDecodeError, ValueError, TypeError):
+        pass
+
+    return items
 
 
 def _parse_nbt_list(raw: str) -> list[float] | None:

@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import string
 from abc import ABC, abstractmethod
 from typing import Any
 
@@ -39,6 +40,7 @@ ACTION_TOOL: dict[str, Any] = {
                         "move_to",
                         "move_forward",
                         "move_back",
+                        "walk_to",
                         "turn_left",
                         "turn_right",
                         "jump",
@@ -213,12 +215,15 @@ class OpenAIClient(LLMClient):
     async def decompose_goal(self, goal: str) -> list[dict[str, Any]]:
         from .prompts import GOAL_DECOMPOSE_PROMPT
 
+        # Format goal safely — str.format() crashes on "{" inside goal
+        prompt = string.Template(GOAL_DECOMPOSE_PROMPT).safe_substitute(goal=goal)
+
         try:
             response = await self._client.chat.completions.create(
                 model=self._model,
                 messages=[
                     {"role": "system", "content": "You are a Minecraft task planner. Return only valid JSON."},
-                    {"role": "user", "content": GOAL_DECOMPOSE_PROMPT.format(goal=goal)},
+                    {"role": "user", "content": prompt},
                 ],
                 temperature=0.3,
                 response_format={"type": "json_object"},
@@ -324,11 +329,12 @@ class AnthropicClient(LLMClient):
 
     async def decompose_goal(self, goal: str) -> list[dict[str, Any]]:
         from .prompts import GOAL_DECOMPOSE_PROMPT
+        prompt = string.Template(GOAL_DECOMPOSE_PROMPT).safe_substitute(goal=goal)
         try:
             response = await self._client.messages.create(
                 model=self._model,
                 system="You are a Minecraft task planner. Return only valid JSON.",
-                messages=[{"role": "user", "content": GOAL_DECOMPOSE_PROMPT.format(goal=goal)}],
+                messages=[{"role": "user", "content": prompt}],
                 temperature=0.3,
                 max_tokens=1024,
             )
@@ -410,7 +416,7 @@ class OllamaClient(LLMClient):
         import httpx
 
         from .prompts import GOAL_DECOMPOSE_PROMPT
-        prompt = GOAL_DECOMPOSE_PROMPT.format(goal=goal)
+        prompt = string.Template(GOAL_DECOMPOSE_PROMPT).safe_substitute(goal=goal)
         payload = {
             "model": self._model,
             "messages": [
@@ -531,12 +537,13 @@ class OpenRouterClient(LLMClient):
 
     async def decompose_goal(self, goal: str) -> list[dict[str, Any]]:
         from .prompts import GOAL_DECOMPOSE_PROMPT
+        prompt = string.Template(GOAL_DECOMPOSE_PROMPT).safe_substitute(goal=goal)
         try:
             response = await self._client.chat.completions.create(
                 model=self._model,
                 messages=[
                     {"role": "system", "content": "You are a Minecraft task planner. Return only valid JSON."},
-                    {"role": "user", "content": GOAL_DECOMPOSE_PROMPT.format(goal=goal)},
+                    {"role": "user", "content": prompt},
                 ],
                 temperature=0.3,
                 response_format={"type": "json_object"},
@@ -769,7 +776,7 @@ class OpenCodeServerClient(LLMClient):
 
         await self._ensure_session()
 
-        prompt = GOAL_DECOMPOSE_PROMPT.format(goal=goal)
+        prompt = string.Template(GOAL_DECOMPOSE_PROMPT).safe_substitute(goal=goal)
         request_body: dict[str, Any] = {
             "parts": [{"type": "text", "text": prompt}],
             "system": "You are a Minecraft task planner. Return only valid JSON.",
@@ -815,7 +822,9 @@ class OpenCodeServerClient(LLMClient):
             return []
 
     async def close(self) -> None:
+        """Close the HTTP session.  MUST be called on shutdown."""
         await self._http.aclose()
+        self._session_id = None
 
 
 # ── Factory ─────────────────────────────────────────────────────────────

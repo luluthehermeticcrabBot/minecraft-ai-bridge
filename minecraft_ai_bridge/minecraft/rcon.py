@@ -1,7 +1,17 @@
 """RCON protocol client for sending commands to a Minecraft server.
+.. deprecated::
+   The MCPQ plugin (via mc_api.py / mcpq) has replaced RCON for all
+   gameplay functionality.  This module is kept as a reference / fallback
+   for admin commands only and is NOT actively maintained.  It may be
+   removed in a future release.
 
 Implements the Minecraft RCON protocol directly over TCP
 (no external dependencies beyond stdlib).
+
+Usage (deprecated)::
+    async with RCONClient("localhost", 25575, "password") as rcon:
+        result = await rcon.command("/time query daytime")
+        print(result)
 """
 
 from __future__ import annotations

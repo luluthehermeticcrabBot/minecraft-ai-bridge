@@ -68,6 +68,10 @@ class AgentGoal(BaseModel):
     parent_goal: str | None = None
     depth: int = 0
 
+    # Private: object reference to parent for navigating the goal tree.
+    # Not serialised — set by GoalManager when building the tree.
+    _parent_ref: "AgentGoal | None" = None
+
     @property
     def active_sub_goal(self) -> AgentGoal | None:
         """Return the first incomplete sub-goal."""

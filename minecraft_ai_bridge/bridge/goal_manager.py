@@ -37,7 +37,7 @@ _FALLBACK_PLANS: list[tuple[re.Pattern, str, list[str]]] = [
         ],
     ),
     (
-        re.compile(r"diamond|ore|mine|dig|tunnel|excavate", re.IGNORECASE),
+        re.compile(r"diamond|\bore\b|mine|dig|tunnel|excavate", re.IGNORECASE),
         "Mine for resources",
         [
             "Check inventory for tools (pickaxe, shovel)",
@@ -177,9 +177,10 @@ class GoalManager:
                         depth=1,
                         parent_goal=description,
                     )
+                    sg._parent_ref = self._root
                     self._root.sub_goals.append(sg)
                 logger.info(
-                    "Decomposed into %d sub-goals", len(self._root.sub_goals)
+                    "Decomposed into %d sub-goals", self.sub_goal_count
                 )
                 self._current = self._root.active_sub_goal or self._root
                 return self._root
@@ -219,14 +220,14 @@ class GoalManager:
             logger.info("No keyword match; using generic fallback plan.")
 
         for i, step_desc in enumerate(steps):
-            self._root.sub_goals.append(
-                AgentGoal(
-                    description=step_desc,
-                    priority=i + 1,
-                    depth=1,
-                    parent_goal=description,
-                )
+            sg = AgentGoal(
+                description=step_desc,
+                priority=i + 1,
+                depth=1,
+                parent_goal=description,
             )
+            sg._parent_ref = self._root
+            self._root.sub_goals.append(sg)
         logger.info("Fallback decomposition: %d sub-goals", len(steps))
 
     def set_goal_from_subgoals(self, description: str, subgoals: list[dict[str, Any]]) -> AgentGoal:
@@ -247,15 +248,20 @@ class GoalManager:
     # ── Progress tracking ────────────────────────────────────────────
 
     def mark_current_complete(self) -> None:
-        """Mark the current sub-goal as done and advance to the next."""
+        """Mark the current sub-goal as done and advance to the next.
+
+        Uses the ``_parent_ref`` object reference (set during tree
+        construction) to navigate siblings, which correctly handles
+        goal trees of arbitrary depth.
+        """
         if self._current is None:
             return
         self._current.completed = True
         logger.info("Goal completed: %s", self._current.description)
 
-        if self._current.parent_goal:
-            # Find next sibling
-            parent = self._root
+        # Navigate via object reference instead of string-based lookup
+        parent = self._current._parent_ref
+        if parent is not None:
             siblings = parent.sub_goals
             idx = next(
                 (i for i, sg in enumerate(siblings) if sg is self._current),
@@ -265,8 +271,9 @@ class GoalManager:
                 self._current = siblings[idx + 1]
             else:
                 parent.completed = True
-                self._current = None  # all done
+                self._current = None  # all siblings done
         else:
+            # Root goal itself (no parent) — nothing else to do
             self._current = None
 
     @property
@@ -280,6 +287,16 @@ class GoalManager:
     def is_complete(self) -> bool:
         """All goals are finished."""
         return self._current is None and (self._root is not None and self._root.completed)
+
+    @property
+    def sub_goal_count(self) -> int:
+        """Number of sub-goals under the root goal."""
+        return len(self._root.sub_goals) if self._root else 0
+
+    @property
+    def root_description(self) -> str:
+        """Description of the root goal, or empty string if none set."""
+        return self._root.description if self._root else ""
 
     @property
     def progress(self) -> str:

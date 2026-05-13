@@ -218,6 +218,95 @@ class McpqClient:
         assert self._mc is not None
         return await self._run(self._mc.getServerVersion)
 
+    async def get_biome(self, x: int, y: int, z: int) -> str:
+        """Detect the biome at a given position using surface-block heuristics
+        and (fallback) command-based checks.
+
+        Paper 1.21.4 removed the ``/locatebiome`` command (it's now
+        ``/locate biome <type>`` and requires a biome argument), so we use
+        a two-pronged approach:
+
+        1. **Block heuristics** — check the surface block and infer the
+           biome from known block-climate mappings.  Fast and reliable.
+        2. **Command fallback** — try ``/execute if biome`` checks for
+           common biomes when heuristics are ambiguous.
+
+        Returns the biome name (e.g. ``"plains"``) or ``"unknown"``.
+        """
+        # ── Heuristic: surface block → biome mapping ───────────────
+        try:
+            surface = await self.get_block(x, y - 1, z)
+            block_id = surface.lower()
+
+            # Known block-biome mappings (extend as needed)
+            block_to_biome: dict[str, str] = {
+                "grass_block": "plains",
+                "sand": "desert",
+                "red_sand": "badlands",
+                "snow_block": "snowy_plains",
+                "mycelium": "mushroom_fields",
+                "podzol": "old_growth_taiga",
+                "terracotta": "badlands",
+                "water": "ocean",
+                "gravel": "ocean",
+                "stone": "windswept_hills",
+                "coarse_dirt": "savanna",
+            }
+
+            for prefix, biome in block_to_biome.items():
+                if prefix in block_id:
+                    return biome
+
+            # ── Secondary heuristic: check nearby blocks ────────────
+            # If the surface block is generic (e.g., dirt or grass),
+            # check adjacent blocks for climate indicators.
+            neighbors = [
+                await self.get_block(x + 1, y - 1, z),
+                await self.get_block(x - 1, y - 1, z),
+                await self.get_block(x, y - 1, z + 1),
+                await self.get_block(x, y - 1, z - 1),
+            ]
+
+            neighbor_ids = " ".join(n.lower() for n in neighbors)
+
+            if "snow" in neighbor_ids or "ice" in neighbor_ids:
+                return "snowy_plains"
+            if "sand" in neighbor_ids and "red_sand" in neighbor_ids:
+                return "beach"
+            if "water" in neighbor_ids or "kelp" in neighbor_ids:
+                # Check if mostly surrounded by water → ocean
+                water_count = sum(1 for n in neighbors if "water" in n.lower())
+                if water_count >= 3:
+                    return "ocean"
+                return "beach" if "sand" in neighbor_ids else "river"
+            if "terracotta" in neighbor_ids or "red_sand" in neighbor_ids:
+                return "badlands"
+            if "podzol" in neighbor_ids:
+                return "taiga"
+            if "mycelium" in neighbor_ids:
+                return "mushroom_fields"
+
+        except Exception:
+            pass
+
+        # ── Fallback: try /execute if biome for common biomes ──────
+        # This works on Paper 1.21.4 but is slow — only run when
+        # heuristics don't give a clear answer.
+        common_biomes = [
+            "plains", "desert", "forest", "taiga", "snowy_plains",
+            "badlands", "ocean", "river", "swamp", "jungle",
+        ]
+        for biome in common_biomes:
+            try:
+                check_cmd = f"execute if biome {x} {y} {z} in minecraft:{biome} run say __biome_{biome}__"
+                resp = await self.run_command_blocking(check_cmd)
+                if f"__biome_{biome}__" in resp:
+                    return biome
+            except Exception:
+                continue
+
+        return "unknown"
+
     async def get_time(self) -> str:
         """Query the current in-game time.
 

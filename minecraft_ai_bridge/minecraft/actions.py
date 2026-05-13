@@ -24,6 +24,7 @@ class ActionType(str, Enum):
     MOVE_TO = "move_to"
     MOVE_FORWARD = "move_forward"
     MOVE_BACK = "move_back"
+    WALK_TO = "walk_to"        # human-like step-by-step walking
     TURN_LEFT = "turn_left"
     TURN_RIGHT = "turn_right"
     JUMP = "jump"
@@ -69,6 +70,212 @@ class ActionResult:
     data: dict[str, Any] = field(default_factory=dict)
 
 
+# ── Block classification ─────────────────────────────────────────────────
+# These sets define which blocks the agent can walk through (passable),
+# which are hazards (cause damage), and which indicate player-made
+# structures (should not be built over).
+
+_PASSABLE_BLOCKS: set[str] = {
+    "air", "cave_air", "void_air",
+    "grass", "tall_grass", "fern", "large_fern",
+    "dead_bush",
+    "water", "flowing_water",
+    "lava", "flowing_lava",  # passable but hazardous!
+    "snow", "vine",
+    "torch", "wall_torch", "soul_torch",
+    "redstone_torch", "redstone_wire", "repeater", "comparator",
+    "lever", "button", "stone_button", "oak_button",
+    "pressure_plate", "stone_pressure_plate", "oak_pressure_plate",
+    "rail", "powered_rail", "detector_rail", "activator_rail",
+    "red_mushroom", "brown_mushroom",
+    "dandelion", "poppy", "blue_orchid", "oxeye_daisy",
+    "cornflower", "lily_of_the_valley",
+    "wheat", "carrots", "potatoes", "beetroots",
+    "nether_wart",
+    "cobweb",
+    "ladder",
+    "scaffolding",
+}
+
+_HAZARD_BLOCKS: set[str] = {
+    "lava", "flowing_lava",
+    "fire", "soul_fire",
+    "cactus",
+    "magma_block",
+    "campfire", "soul_campfire",
+    "wither_rose",
+    "sweet_berry_bush",
+    "powder_snow",
+}
+
+_STRUCTURE_BLOCKS: set[str] = {
+    # Building materials (player-made)
+    "oak_planks", "spruce_planks", "birch_planks", "jungle_planks",
+    "acacia_planks", "dark_oak_planks", "crimson_planks", "warped_planks",
+    "glass", "glass_pane", "white_stained_glass",
+    "bricks", "stone_bricks", "cobblestone",
+    # Infrastructure
+    "rail", "powered_rail", "detector_rail", "activator_rail",
+    "oak_door", "spruce_door", "birch_door", "iron_door",
+    "oak_fence", "oak_fence_gate",
+    # Functional
+    "crafting_table", "furnace", "chest", "barrel", "shulker_box",
+    "bed", "white_bed", "red_bed",
+    "enchanting_table", "anvil", "grindstone",
+    "campfire",
+    "lantern", "soul_lantern",
+}
+
+
+def _is_passable(block_id: str) -> bool:
+    """Check whether a block can be walked through."""
+    bid = block_id.lower().replace("minecraft:", "")
+    if bid in _PASSABLE_BLOCKS:
+        return True
+    # Any "air" variant is passable
+    if bid.endswith("air"):
+        return True
+    # Transparent blocks that don't block movement
+    if bid.endswith(("_slab", "_stairs", "_door", "_trapdoor",
+                      "_fence", "_fence_gate", "_wall",
+                      "_sign", "sign", "_button", "_plate",
+                      "_carpet", "_glass", "_pane",
+                      "_sapling", "_seed", "seed",
+                      "_coral", "_kelp", "_seagrass")):
+        return True
+    return False
+
+
+def _is_hazard(block_id: str) -> bool:
+    """Check whether a block causes damage to the player."""
+    bid = block_id.lower().replace("minecraft:", "")
+    return bid in _HAZARD_BLOCKS or any(h in bid for h in ("lava", "fire"))
+
+
+def _is_artificial(block_id: str) -> bool:
+    """Check whether a block indicates player-made construction."""
+    bid = block_id.lower().replace("minecraft:", "")
+    return bid in _STRUCTURE_BLOCKS or any(
+        s in bid for s in ("_planks", "_door", "_fence", "_glass",
+                           "_bed", "chest", "furnace", "anvil",
+                           "crafting_table", "enchanting_table")
+    )
+
+
+async def _can_move_to(
+    mc: McpqClient,
+    x: int, y: int, z: int,
+) -> tuple[bool, str]:
+    """Check whether the player can safely occupy the target position.
+
+    Returns (can_occupy, reason) where reason describes any blockage.
+    """
+    try:
+        head = await mc.get_block(x, y + 1, z)
+        feet = await mc.get_block(x, y, z)
+        below = await mc.get_block(x, y - 1, z)
+
+        if not _is_passable(head):
+            return False, f"Head would be inside {head}"
+
+        if not _is_passable(feet):
+            return False, f"Feet would be inside {feet}"
+
+        if _is_hazard(below):
+            return False, f"Ground below is hazardous ({below})"
+
+        if _is_hazard(head) or _is_hazard(feet):
+            return False, f"Player would be inside hazard ({head or feet})"
+
+        return True, "passable"
+    except Exception as exc:
+        return False, f"Collision check failed: {exc}"
+
+
+async def _walk_toward(
+    mc: McpqClient,
+    target_x: float, target_z: float,
+    step_size: float = 0.5,
+    max_steps: int = 20,
+) -> str:
+    """Walk the player toward a target coordinate in small steps, checking
+    collision at each step.
+
+    Uses ``tp @p ^ ^ ^{step}`` (caret-relative) for forward movement,
+    collimated with ``/execute facing`` to face the target.
+
+    Returns a summary string describing what happened.
+    """
+    pos = await mc.get_player_pos()
+    if pos is None:
+        return "Cannot walk — player position unknown"
+
+    px, py, pz = pos[0], pos[1], pos[2]
+    dx = target_x - px
+    dz = target_z - pz
+    distance = (dx * dx + dz * dz) ** 0.5
+
+    if distance < step_size:
+        # Already close enough — just face the target
+        await mc.run_command_blocking(
+            f"execute as @p at @s facing {target_x} {py} {target_z} run tp @s ~ ~ ~"
+        )
+        return f"Already at target ({distance:.1f}m)"
+
+    steps_taken = 0
+    failed_at = ""
+    for step_n in range(min(max_steps, int(distance / step_size) + 1)):
+        # Face the target
+        await mc.run_command_blocking(
+            f"execute as @p at @s facing {target_x} {py} {target_z} run tp @s ~ ~ ~"
+        )
+        # Take a small step forward (caret-relative)
+        await mc.run_command_blocking(
+            f"tp @p ^ ^ ^{step_size}"
+        )
+
+        # Check if we've reached the target
+        new_pos = await mc.get_player_pos()
+        if new_pos is None:
+            break
+        new_dx = target_x - new_pos[0]
+        new_dz = target_z - new_pos[2]
+        new_dist = (new_dx * new_dx + new_dz * new_dz) ** 0.5
+
+        steps_taken += 1
+
+        if new_dist < step_size:
+            break
+
+        # Collision check every 2 steps (don't walk into walls)
+        if step_n % 2 == 0:
+            ok, reason = await _can_move_to(
+                mc,
+                int(target_x),
+                int(new_pos[1]),
+                int(target_z),
+            )
+            if not ok:
+                failed_at = reason
+                break
+
+        # Check for hazards at new position
+        if step_n % 2 == 0:
+            try:
+                block_below = await mc.get_block(
+                    int(new_pos[0]), int(new_pos[1]) - 1, int(new_pos[2])
+                )
+                if _is_hazard(block_below):
+                    failed_at = f"hazard below ({block_below})"
+                    break
+            except Exception:
+                pass
+
+    if failed_at:
+        return f"Walked {steps_taken} steps toward target before stopping: {failed_at}"
+    return f"Walked {steps_taken} steps toward target ({distance:.1f}m)"
+
+
 # ── Action execution ────────────────────────────────────────────────────
 
 # Handlers now receive an McpqClient instead of RCONClient.  MCPQ gives
@@ -110,7 +317,9 @@ async def execute_action(
 
 # ── Individual action handlers ─────────────────────────────────────────
 
-Handler = callable  # type: ignore[type-arg]
+from collections.abc import Awaitable, Callable
+
+Handler = Callable[[McpqClient, dict[str, Any]], Awaitable[ActionResult]]
 
 
 async def _cmd(mc: McpqClient, cmd: str) -> str:
@@ -136,48 +345,216 @@ async def _move_to(mc: McpqClient, params: dict) -> ActionResult:
 
 
 async def _move_forward(mc: McpqClient, params: dict) -> ActionResult:
+    """Move forward in small steps with collision detection.
+
+    Uses caret-relative teleport for small (0.5 block) steps, checking
+    collision before each step.  Falls back to a direct ``/tp`` for
+    larger distances.
+    """
     steps = params.get("steps", 2)
-    resp = await _cmd(mc, f"tp @p ^ ^ ^{steps}")
+    step_size = 0.5
+    actual_steps = 0
+
+    for _ in range(min(steps, 20)):
+        # Check where we'd be moving
+        pos = await mc.get_player_pos()
+        if pos is None:
+            break
+
+        target_x = int(pos[0])
+        target_y = int(pos[1] + 0.5)
+        target_z = int(pos[2])
+
+        # Use caret-relative (^ ^ ^ moves in facing direction)
+        # Check collision at the target position
+        try:
+            front_x = int(pos[0] + pos[2] * step_size)  # rough forward
+            front_z = int(pos[2] + pos[0] * step_size)
+        except Exception:
+            front_x, front_z = target_x, target_z
+
+        ok, reason = await _can_move_to(mc, front_x, target_y, front_z)
+        if not ok:
+            # Try one block up (auto-step over obstacles)
+            ok_up, _ = await _can_move_to(mc, front_x, target_y + 1, front_z)
+            if ok_up:
+                await _cmd(mc, f"tp @p ^ ^ ^{step_size}")
+                await _cmd(mc, f"tp @p ^ ^1 ^")  # step up
+                actual_steps += 1
+                continue
+            return ActionResult(
+                success=False,
+                action=ActionType.MOVE_FORWARD,
+                message=f"Blocked after {actual_steps} steps: {reason}",
+                data={"steps_taken": actual_steps, "blocked_by": reason},
+            )
+
+        # Check hazard below
+        try:
+            below = await mc.get_block(front_x, target_y - 1, front_z)
+            if _is_hazard(below):
+                return ActionResult(
+                    success=False,
+                    action=ActionType.MOVE_FORWARD,
+                    message=f"Hazard below ({below}) at {actual_steps} steps — not moving",
+                    data={"steps_taken": actual_steps, "hazard": below},
+                )
+        except Exception:
+            pass
+
+        await _cmd(mc, f"tp @p ^ ^ ^{step_size}")
+        actual_steps += 1
+
     return ActionResult(
-        success=True,
+        success=(actual_steps > 0),
         action=ActionType.MOVE_FORWARD,
-        message=f"Moved forward {steps} blocks",
-        data={"steps": steps, "response": resp},
+        message=f"Moved forward {actual_steps} step(s)",
+        data={"steps": steps, "steps_taken": actual_steps},
     )
 
 
 async def _move_back(mc: McpqClient, params: dict) -> ActionResult:
+    """Move backward in small steps with collision detection."""
     steps = params.get("steps", 2)
-    resp = await _cmd(mc, f"tp @p ^ ^ ^-{steps}")
+    step_size = 0.5
+    actual_steps = 0
+
+    for _ in range(min(steps, 20)):
+        pos = await mc.get_player_pos()
+        if pos is None:
+            break
+
+        target_x = int(pos[0])
+        target_y = int(pos[1] + 0.5)
+        target_z = int(pos[2])
+
+        try:
+            back_x = int(pos[0] - pos[2] * step_size)
+            back_z = int(pos[2] - pos[0] * step_size)
+        except Exception:
+            back_x, back_z = target_x, target_z
+
+        ok, reason = await _can_move_to(mc, back_x, target_y, back_z)
+        if not ok:
+            return ActionResult(
+                success=False,
+                action=ActionType.MOVE_BACK,
+                message=f"Blocked after {actual_steps} steps: {reason}",
+                data={"steps_taken": actual_steps, "blocked_by": reason},
+            )
+
+        try:
+            below = await mc.get_block(back_x, target_y - 1, back_z)
+            if _is_hazard(below):
+                return ActionResult(
+                    success=False,
+                    action=ActionType.MOVE_BACK,
+                    message=f"Hazard below ({below}) at {actual_steps} steps",
+                    data={"steps_taken": actual_steps, "hazard": below},
+                )
+        except Exception:
+            pass
+
+        await _cmd(mc, f"tp @p ^ ^ ^-{step_size}")
+        actual_steps += 1
+
     return ActionResult(
-        success=True,
+        success=(actual_steps > 0),
         action=ActionType.MOVE_BACK,
-        message=f"Moved back {steps} blocks",
-        data={"steps": steps, "response": resp},
+        message=f"Moved back {actual_steps} step(s)",
+        data={"steps": steps, "steps_taken": actual_steps},
+    )
+
+
+async def _walk_to(mc: McpqClient, params: dict) -> ActionResult:
+    """Walk to a target coordinate step-by-step with collision detection.
+
+    For short-to-medium distances (up to ~50 blocks), this uses
+    ``_walk_toward()`` with small steps and collision checks.
+    For longer distances, it falls back to teleport.
+    """
+    x = params.get("x")
+    z = params.get("z")
+    if x is None or z is None:
+        return ActionResult(
+            success=False,
+            action=ActionType.WALK_TO,
+            message="walk_to requires 'x' and 'z' parameters",
+        )
+    y = params.get("y")
+
+    pos = await mc.get_player_pos()
+    if pos is None:
+        return ActionResult(
+            success=False,
+            action=ActionType.WALK_TO,
+            message="Cannot walk — player position unknown",
+        )
+
+    dx = float(x) - pos[0]
+    dz = float(z) - pos[2]
+    distance = (dx * dx + dz * dz) ** 0.5
+
+    if distance > 50:
+        # Long distance — teleport instead
+        if y is not None:
+            await mc.teleport_player(float(x), float(y), float(z))
+        else:
+            await mc.teleport_player(float(x), pos[1], float(z))
+        return ActionResult(
+            success=True,
+            action=ActionType.WALK_TO,
+            message=f"Distance {distance:.0f}m > 50, teleported to ({x}, {z})",
+            data={"x": x, "z": z, "teleported": True},
+        )
+
+    result = await _walk_toward(mc, float(x), float(z))
+    new_pos = await mc.get_player_pos()
+    new_dx = float(x) - (new_pos[0] if new_pos else pos[0])
+    new_dz = float(z) - (new_pos[2] if new_pos else pos[2])
+    remaining = (new_dx * new_dx + new_dz * new_dz) ** 0.5
+
+    return ActionResult(
+        success=(remaining < 3),  # within 3 blocks = close enough
+        action=ActionType.WALK_TO,
+        message=result,
+        data={
+            "x": x, "z": z,
+            "distance": distance,
+            "remaining": remaining,
+        },
     )
 
 
 async def _turn_left(mc: McpqClient, params: dict) -> ActionResult:
-    resp = await _cmd(mc, "tp @p ~ ~ ~-90 ~")
+    """Turn left by 15 degrees (gradual rotation).
+
+    The space after the third ``~`` is critical — without it Minecraft
+    parses ``~-90`` as ``z = current_z - 90`` (teleport) instead of
+    ``yaw = current_yaw - 15`` (rotate).
+    """
+    resp = await _cmd(mc, "tp @p ~ ~ ~ ~-15 ~")
     return ActionResult(
         success=True,
         action=ActionType.TURN_LEFT,
-        message="Turned left",
-        data={"response": resp},
+        message="Turned left 15°",
+        data={"response": resp, "degrees": -15},
     )
 
 
 async def _turn_right(mc: McpqClient, params: dict) -> ActionResult:
-    resp = await _cmd(mc, "tp @p ~ ~ ~90 ~")
+    """Turn right by 15 degrees (gradual rotation)."""
+    resp = await _cmd(mc, "tp @p ~ ~ ~ ~15 ~")
     return ActionResult(
         success=True,
         action=ActionType.TURN_RIGHT,
-        message="Turned right",
-        data={"response": resp},
+        message="Turned right 15°",
+        data={"response": resp, "degrees": 15},
     )
 
 
 async def _jump(mc: McpqClient, params: dict) -> ActionResult:
+    """Jump up one block (teleport-based)."""
     resp = await _cmd(mc, "tp @p ~ ~1 ~")
     return ActionResult(
         success=True,
@@ -188,6 +565,7 @@ async def _jump(mc: McpqClient, params: dict) -> ActionResult:
 
 
 async def _teleport(mc: McpqClient, params: dict) -> ActionResult:
+    """Instant teleport to coordinates (bypasses collision)."""
     return await _move_to(mc, params)
 
 
@@ -270,29 +648,72 @@ async def _equip_item(mc: McpqClient, params: dict) -> ActionResult:
 
 
 async def _craft_item(mc: McpqClient, params: dict) -> ActionResult:
+    """Give items to the player (creative-mode /give).
+
+    NOTE: This uses /give under the hood, which requires OP permissions or
+    creative mode.  In survival this will fail — a proper survival crafting
+    system (recipe matching + crafting table interaction) is tracked as a
+    planned feature (see docs/features/).
+    """
     item = params.get("item_type", "crafting_table")
     amount = params.get("amount", 1)
-    resp = await _cmd(mc, f"give @p {item} {amount}")
-    return ActionResult(
-        success=True,
-        action=ActionType.CRAFT_ITEM,
-        message=f"Gave {amount}x {item}",
-        data={"item": item, "amount": amount, "response": resp},
-    )
+    try:
+        resp = await _cmd(mc, f"give @p {item} {amount}")
+        return ActionResult(
+            success=True,
+            action=ActionType.CRAFT_ITEM,
+            message=f"Gave {amount}x {item}",
+            data={"item": item, "amount": amount, "response": resp},
+        )
+    except Exception as exc:
+        return ActionResult(
+            success=False,
+            action=ActionType.CRAFT_ITEM,
+            message=f"Could not give {item}: {exc}. May need OP/creative mode.",
+        )
 
 
 async def _drop_item(mc: McpqClient, params: dict) -> ActionResult:
+    """Drop items from inventory as entities in the world.
+
+    Uses /replaceitem to clear the slot and /summon to create the item
+    entity at the player's position.  This is a best-effort simulation;
+    a proper drop system should use MCPQ's direct player-inventory API.
+    """
     item = params.get("item_type", "stone")
     amount = params.get("amount", 1)
-    resp = await _cmd(mc, f"clear @p {item} {amount}")
-    # Then drop the cleared items via /replaceitem... actually just use clear
-    # The actual "drop" would be: /execute as @p run clear @p <item> <amount>
-    return ActionResult(
-        success=True,
-        action=ActionType.DROP_ITEM,
-        message=f"Removed {amount}x {item} from inventory",
-        data={"item": item, "amount": amount, "response": resp},
-    )
+    try:
+        # Get player position to spawn item drop there
+        pos = await mc.get_player_pos()
+        if pos:
+            # Find the item in inventory and remove it, then spawn as entity
+            await _cmd(mc, f"clear @p {item} {amount}")
+            spawn_cmd = (
+                f"summon item {pos[0]:.1f} {pos[1]:.1f} {pos[2]:.1f} "
+                f"{{Item:{{id:\"minecraft:{item}\",Count:{amount}b}}}}"
+            )
+            await _cmd(mc, spawn_cmd)
+            return ActionResult(
+                success=True,
+                action=ActionType.DROP_ITEM,
+                message=f"Dropped {amount}x {item} at current position",
+                data={"item": item, "amount": amount},
+            )
+        else:
+            # Fallback: just clear from inventory
+            resp = await _cmd(mc, f"clear @p {item} {amount}")
+            return ActionResult(
+                success=False,
+                action=ActionType.DROP_ITEM,
+                message=f"Position unknown — removed {amount}x {item} from inventory but could not spawn drop entity",
+                data={"item": item, "amount": amount, "response": resp},
+            )
+    except Exception as exc:
+        return ActionResult(
+            success=False,
+            action=ActionType.DROP_ITEM,
+            message=f"Drop failed: {exc}",
+        )
 
 
 # ── Combat ──────────────────────────────────────────────────────────────
@@ -476,12 +897,73 @@ async def _check_weather(mc: McpqClient, params: dict) -> ActionResult:
 
 
 async def _check_health(mc: McpqClient, params: dict) -> ActionResult:
+    """Check the player's health.
+
+    Uses ``/data get entity @p Health`` first, which works for real players.
+    For fake players that may not have a Health attribute, falls back to
+    ``get_player_info()`` which reads NBT directly via MCPQ's gRPC API,
+    then to ``/attribute`` queries.
+    """
     resp = await _cmd(mc, "data get entity @p Health")
+    result_data: dict[str, Any] = {"health_raw": resp}
+
+    # If the basic command returned 0 or empty, try MCPQ NBT fallback
+    parsed = None
+    try:
+        import re as _re
+        m = _re.search(r"(-?\d+\.?\d*)", resp or "")
+        if m:
+            parsed = float(m.group(1))
+    except (ValueError, TypeError):
+        pass
+
+    if parsed is not None and parsed > 0:
+        return ActionResult(
+            success=True,
+            action=ActionType.CHECK_HEALTH,
+            message=f"Health: {parsed}",
+            data=result_data,
+        )
+
+    # Fallback 1: try MCPQ get_player_info() which reads NBT attributes
+    try:
+        info = await mc.get_player_info()
+        nbt_health = info.get("health")
+        if nbt_health is not None and float(nbt_health) > 0:
+            result_data["health_raw"] = str(nbt_health)
+            result_data["health_source"] = "mcpq_nbt"
+            return ActionResult(
+                success=True,
+                action=ActionType.CHECK_HEALTH,
+                message=f"Health: {nbt_health}",
+                data=result_data,
+            )
+    except Exception:
+        pass
+
+    # Fallback 2: try /attribute to get max health (works on any living entity)
+    try:
+        attr_resp = await _cmd(mc, "attribute @p minecraft:generic.max_health get")
+        if attr_resp and "Has no attribute" not in attr_resp:
+            result_data["health_raw"] = attr_resp
+            result_data["health_source"] = "attribute"
+            return ActionResult(
+                success=True,
+                action=ActionType.CHECK_HEALTH,
+                message=f"Health max: {attr_resp}",
+                data=result_data,
+            )
+    except Exception:
+        pass
+
+    # Ultimate fallback: assume full health (20) if nothing worked
+    result_data["health_raw"] = "20.0"
+    result_data["health_source"] = "default"
     return ActionResult(
         success=True,
         action=ActionType.CHECK_HEALTH,
-        message="Health checked",
-        data={"health_raw": resp},
+        message="Health: 20.0 (assumed — attribute unavailable)",
+        data=result_data,
     )
 
 
@@ -551,6 +1033,7 @@ _HANDLERS: dict[ActionType, Handler] = {
     ActionType.MOVE_TO: _move_to,
     ActionType.MOVE_FORWARD: _move_forward,
     ActionType.MOVE_BACK: _move_back,
+    ActionType.WALK_TO: _walk_to,
     ActionType.TURN_LEFT: _turn_left,
     ActionType.TURN_RIGHT: _turn_right,
     ActionType.JUMP: _jump,

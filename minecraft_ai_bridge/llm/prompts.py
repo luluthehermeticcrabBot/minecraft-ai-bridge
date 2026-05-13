@@ -13,8 +13,9 @@ SYSTEM_PROMPT = """You are an AI agent that plays Minecraft.  You connect to a M
 server via an action bridge and can observe the world and perform actions.
 
 == YOUR CAPABILITIES ==
-You move by teleporting (instant).  You can:
-- Move to coordinates, move forward/backward, turn left/right, jump
+You move by walking (step-by-step with collision detection) or teleporting:
+- Walk to coordinates (walk_to — human-like movement), teleport (instant)
+- Move forward/backward in small steps, turn left/right (15° each), jump
 - Break and place blocks, interact with blocks/entities
 - Check your inventory, equip items, craft (give yourself) items
 - Attack entities, scan surroundings, check time/weather/health/position
@@ -43,6 +44,19 @@ the results before deciding the next action.
 10. Look at the sub-goal list (✓ = done, ○ = pending, ← CURRENT).
     Once you've completed the current sub-goal's objective, call
     "done" so the system advances to the next sub-goal.
+11. RESPECT EXISTING STRUCTURES.  Before placing blocks or building,
+    scan the area.  Do NOT build over or inside pre-existing player
+    structures (houses, walls, farms, bridges, railroads, etc.) or
+    NPC village buildings unless explicitly instructed otherwise.
+    When scanning, check for nearby blocks that indicate artificial
+    construction (planks, glass, doors, beds, rails, torches on
+    walls, farmland, etc.).
+12. AVOID VILLAGES.  Do not modify, damage, or build on top of NPC
+    village buildings (houses, farms, meeting points, etc.) unless
+    the user's goal explicitly requires interacting with a village.
+13. PRESERVE INFRASTRUCTURE.  Railroads, paths, bridges, and other
+    infrastructure built by players must not be blocked or modified.
+    Build around them, under them, or at a reasonable distance.
 
 == OUTPUT FORMAT ==
 You MUST respond with a valid JSON object containing these fields:
@@ -55,11 +69,12 @@ You MUST respond with a valid JSON object containing these fields:
 }}
 
 == AVAILABLE ACTIONS ==
-- move_to: {{"x": number, "y": number, "z": number}} — teleport to coords
-- move_forward: {{"steps": number}} — move forward in facing direction
-- move_back: {{"steps": number}} — move backward
-- turn_left: {{}} — turn 90° left
-- turn_right: {{}} — turn 90° right
+- move_to: {{"x": number, "y": number, "z": number}} — instant teleport to coords
+- walk_to: {{"x": number, "z": number, "y": number (optional)}} — walk step-by-step to coords (human-like, avoids hazards, max ~50 blocks)
+- move_forward: {{"steps": number}} — walk forward in small steps with collision detection
+- move_back: {{"steps": number}} — walk backward with collision detection
+- turn_left: {{}} — turn 15° left (gradual rotation)
+- turn_right: {{}} — turn 15° right
 - jump: {{}} — jump up one block
 - break_block: {{"x": number, "y": number, "z": number}} — break a block
 - place_block: {{"x": number, "y": number, "z": number, "block_type": string}} — place a block
@@ -144,11 +159,32 @@ def format_state(state: dict) -> str:
     if time_raw:
         parts.append(f"Time: {time_raw}")
 
-    inv = state.get("inventory_raw", "")
-    if inv and inv != "Inventory: []":
-        parts.append(f"Inventory: {inv[:200]}")
+    biome = state.get("biome", "")
+    if biome:
+        parts.append(f"Biome: {biome}")
+
+    # Structured inventory (parsed from NBT) — prefer this over raw
+    inv_list = state.get("inventory", [])
+    if inv_list and isinstance(inv_list, list):
+        # Group by item name for a compact summary
+        from collections import Counter
+        counts: Counter = Counter()
+        for slot in inv_list:
+            if isinstance(slot, dict):
+                name = slot.get("display_name", slot.get("item_id", "?"))
+                counts[name] += slot.get("count", 1)
+            else:
+                # InventorySlot dataclass
+                counts[slot.display_name] += slot.count
+        items_str = ", ".join(f"{k}x{v}" for k, v in sorted(counts.items()))
+        parts.append(f"Inventory: {items_str}")
     else:
-        parts.append("Inventory: empty")
+        # Fallback to raw NBT
+        inv = state.get("inventory_raw", "")
+        if inv and inv != "Inventory: []":
+            parts.append(f"Inventory: {inv[:200]}")
+        else:
+            parts.append("Inventory: empty")
 
     scan = state.get("scan_data", {})
     if scan:
