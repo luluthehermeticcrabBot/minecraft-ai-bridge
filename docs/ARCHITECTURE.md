@@ -85,13 +85,13 @@ class WorldState:
     position: tuple[float, float, float] | None
     health: float
     inventory: str         # raw NBT data string
+    inventory_manager: InventoryManager  # structured slot tracking
     time: str               # game time string
     players: list[str]
     scan_data: dict         # nearby blocks, cardinal samples
     raw_command_outputs: dict  # all raw responses for debugging
-```
 
-The observer uses `asyncio.gather()` to query position, inventory, health, time, and players concurrently, then parses command outputs where useful.
+The observer uses `asyncio.gather()` to query position, inventory, health, time, and players concurrently. Raw NBT inventory data is parsed into structured slot information via `InventoryManager.update_from_nbt()`.
 
 ### RCON Client (`rcon.py`, optional fallback)
 
@@ -179,7 +179,7 @@ ACTION_TOOL = {
 ## Layer 3: Bridge Orchestration
 
 **Package**: `minecraft_ai_bridge.bridge`  
-**Entry point**: `Orchestrator`
+**Entry points**: `Orchestrator`, `GoalManager`, `AgentMemory`, `ChatCommandParser`, `InventoryManager`
 
 ### Orchestrator (`orchestrator.py`)
 
@@ -198,11 +198,13 @@ Each step:
 └──────────┘    └──────────┘    └──────────┘
      │               │               │
      │               │               │
-     ▼               ▼               ▼
+      ▼               ▼               ▼
 ┌──────────────────────────────────────────┐
 │              Record (Memory)              │
 └──────────────────────────────────────────┘
 ```
+
+**Failure resilience**: The orchestrator tracks `_consecutive_failures` — incremented on every failed action and reset on success. When the counter reaches `_max_failures` (default 5), the agent shuts down gracefully. Exceptions in `run()` are also caught and increment the counter, with exponential backoff sleep for crash recovery.
 
 ### Goal Manager (`goal_manager.py`)
 
@@ -217,11 +219,33 @@ class GoalNode:
 
 - **Goal decomposition**: Sends the high-level goal to the LLM with instructions to return a JSON array of sub-goals
 - **Fallback plans**: If the LLM fails or returns nothing, matches the goal text against patterns — "build" → 11-step construction plan, "mine" → 12-step mining plan, "farm" → 10-step farming plan, "enchant"/"workshop" → 9-step workshop plan, "explore"/"scout" → 8-step exploration plan, plus a generic 6-step fallback
-- **Progress tracking**: `is_complete` property, `mark_current_complete()` method, tree traversal for next uncompleted goal
+    - **Progress tracking**: `is_complete` property, `mark_current_complete()` method, tree traversal for next uncompleted goal
+    - **Fallback regex safety**: Mining pattern uses `\bore\b` (word boundaries) so "Explore" doesn't accidentally match the mining plan via the "ore" substring
+
+### Chat Command Parser (`chat_commands.py`)
+
+Parses incoming Minecraft chat messages for live agent control:
+
+| Command | Effect |
+|---------|--------|
+| `!stop` | Sets shutdown flag, agent stops after current action |
+| `!status` | Returns goal progress and last action summary via chat |
+| `!follow` | Sets follow-player mode for coordinated building/travel |
+
+The parser uses `_COMMAND_RE = r"<([^>]+)>\s+((?:/[!\u00a7]?|!)\w+)(.*)"` to match both `/!status` (with slash) and `!status` (without slash) formats.
+
+### Inventory Manager (`inventory_manager.py`)
+
+Structured tracking of the player's 41-slot inventory (0-8 hotbar, 9-35 main, 36-39 armor, 40 offhand, 41-? extra):
+
+- `update_from_nbt(nbt_data)` — parses raw NBT from `/data get entity @p Inventory`
+- `slot_summary()` — human-readable summary for LLM prompts (hotbar + armor + offhand)
+- `get_slot(slot)` / `find_item(item_type)` — structured lookups
+- Slot regex handles negative offhand slot indices (`-106`) that Paper reports
 
 ### Memory (`memory.py`)
 
-Two-tier memory system:
+Two-tier memory system backed by SQLite:
 
 ```python
 class AgentMemory:
@@ -232,8 +256,9 @@ class AgentMemory:
 ```
 
 - **Short-term**: A `deque` of recent `ActionRecord` objects (action name, success, message, timestamp). Injected into every LLM prompt as a structured text block.
-- **Long-term**: A `set` of fact strings extracted from position data, discoveries, and other notable events. Persists across the entire session.
+- **Long-term**: A `set` of fact strings stored in SQLite. Extracted from position data, discoveries, and other notable events. Persists across the entire session.
 - **Summaries**: `short_term_summary` property formats recent actions for prompts, `notable_facts()` returns all long-term facts.
+- **Thread safety**: Uses `threading.local()` for connection caching. The `close()` method properly deletes the thread-local attribute so subsequent calls reopen a fresh connection rather than returning a stale closed one.
 
 ## Data Flow Diagram
 

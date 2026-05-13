@@ -119,8 +119,8 @@ Each action expects specific parameters:
 | `move_to` | `x`, `y`, `z` (float) | Teleport to coordinates |
 | `move_forward` | `steps` (int, default 2) | Move forward N blocks |
 | `move_back` | `steps` (int, default 2) | Move back N blocks |
-| `turn_left` | — | Rotate 90 degrees left |
-| `turn_right` | — | Rotate 90 degrees right |
+| `turn_left` | — | Rotate 15 degrees left (via `/tp` facing adjustment) |
+| `turn_right` | — | Rotate 15 degrees right (via `/tp` facing adjustment) |
 | `jump` | — | Move up 1 block |
 | `teleport` | `x`, `y`, `z` (float) | Same as move_to |
 | `break_block` | `x`, `y`, `z` (int, optional) | Break block at coords or in front |
@@ -181,7 +181,7 @@ Built-in fallback decomposition plans in `goal_manager.py`:
 | Pattern | Steps |
 |---------|-------|
 | `build.*house\|build.*home\|construct` | 11-step building plan (foundation → floor → walls → door → roof → decorate) |
-| `mine\|diamond\|iron\|ore\|dig` | 12-step mining plan (craft pickaxe → dig → find ore → smelt) |
+| `diamond\|\\bore\\b\|mine\|dig\|tunnel\|excavate` | 12-step mining plan (craft pickaxe → dig → find ore → smelt). Uses `\\bore\\b` (word boundaries) so "Explore" doesn't match via the "ore" substring. |
 | `farm\|wheat\|plant\|grow\|crop` | 10-step farming plan (hoe → till → seeds → plant → water → harvest) |
 | `enchant\|workshop\|alchemy\|potion\|table` | 9-step workshop plan (craft table → bookshelf → enchant → experiment) |
 | `explore\|scout\|biome\|village\|find\|locate\|map` | 8-step exploration plan (scan → pick direction → scout → map) |
@@ -193,6 +193,28 @@ Built-in fallback decomposition plans in `goal_manager.py`:
 - `current_goal` — returns the first uncompleted goal (depth-first traversal)
 - `is_complete` — True when all goals in the tree are completed
 - `progress` — formatted string showing the goal tree with checkmarks
+
+### Chat Commands
+
+The `chat_commands.py` parser intercepts incoming Minecraft chat messages for live agent control without restarting:
+
+| Command | Purpose |
+|---------|---------|
+| `!stop` | Gracefully shuts down the agent after the current action |
+| `!status` | Agent broadcasts goal progress and last action summary to chat |
+| `!follow` | Sets follow-player mode for coordinated building |
+
+The parser regex `_COMMAND_RE = r"<([^>]+)>\s+((?:/[!\u00a7]?|!)\w+)(.*)"` handles both `/!status` (with leading slash) and `!status` formats.
+
+### Inventory Manager
+
+The `inventory_manager.py` module provides structured tracking of the player's 41-slot inventory:
+
+- `update_from_nbt(nbt_data)` — parses raw NBT from `/data get entity @p Inventory`
+- `slot_summary()` — human-readable summary (hotbar + armor + offhand) for LLM prompts
+- `get_slot(slot)` / `find_item(item_type)` — structured lookups
+
+The inventory is presented to the LLM as structured text rather than raw NBT, making it easier for the model to understand what items are available.
 
 ## Memory System
 

@@ -50,7 +50,7 @@ The key difference from traditional RCON-based bridges: **MCPQ gives the agent d
 |-------|---------|----------------|
 | **Minecraft Interface** | `minecraft_ai_bridge.minecraft` | MCPQ client wrapper, 24 action handlers, world observation (position, blocks, inventory, time, weather, health) |
 | **LLM Abstraction** | `minecraft_ai_bridge.llm` | Unified interface for 5 LLM providers, tool-calling schema, system prompts |
-| **Bridge Orchestration** | `minecraft_ai_bridge.bridge` | Think-act-observe loop, goal decomposition & tracking, short+long-term memory |
+| **Bridge Orchestration** | `minecraft_ai_bridge.bridge` | Think-act-observe loop, goal decomposition & tracking, short+long-term memory, chat commands, inventory manager |
 
 ## Quick Start
 
@@ -182,6 +182,8 @@ GOAL="Build a bridge" docker compose run --rm bridge
 # Or run persistently (restarts on crash)
 docker compose up -d bridge   # reads GOAL from docker-compose.yml or .env
 ```
+
+The `minecraft` service is pre-configured with server operators (`OPS` env var) for the usernames `LuLuNyam`, `miau004258`, `AIBot`, and `TestBot` — required for world manipulation permissions.
 
 ### Environment for Docker
 
@@ -326,7 +328,18 @@ minecraft-ai-bridge/
 │   └── bridge/
 │       ├── orchestrator.py         # Main agent loop
 │       ├── goal_manager.py         # Goal decomposition & tracking
-│       └── memory.py               # Short + long-term memory
+│       ├── memory.py               # Short + long-term memory
+│       ├── chat_commands.py        # Incoming chat command parser
+│       └── inventory_manager.py    # Structured inventory tracking
+├── tests/
+│   ├── conftest.py                 # MockMcpqClient, fixtures (328 lines)
+│   ├── test_actions.py             # 24 action handler unit tests
+│   ├── test_observer.py            # NBT parsing, inventory parsing
+│   ├── test_memory.py              # Short/long-term memory tests
+│   ├── test_goal_manager.py        # Goal decomposition & fallback plans
+│   ├── test_chat_commands.py       # Chat command parsing tests
+│   ├── test_inventory_manager.py   # Inventory manager tests
+│   └── test_integration.py         # Full agent loop (real MCPQ + real LLM)
 ├── docs/
 │   ├── ARCHITECTURE.md             # Deep architecture dive
 │   ├── SETUP.md                    # Detailed installation guide
@@ -337,6 +350,67 @@ minecraft-ai-bridge/
 │   └── goals.yaml                  # Example goals with sub-goals
 └── AGENTS.md                       # AI handoff notes
 ```
+
+## Project Status & Tracking
+
+| Area | File | Purpose |
+|------|------|---------|
+| **Bugs** | `docs/bugs.md` | All known bugs, triaged and untriaged |
+| **Improvements** | `docs/improvements.md` | Code quality, performance, maintainability |
+| **Planned Features** | `docs/features/README.md` | Feature proposals with effort estimates |
+| **WASD Movement** | `docs/features/wasd-movement.md` | Human-like walking movement (P2) |
+| **Survival Mode** | `docs/features/survival-mode.md` | Hunting, defense, full survival (P3) |
+| **OpenCode Skill** | `docs/features/opencode-skill.md` | OpenCode/Hermes integration (exploratory) |
+| **Agent Diary** | `docs/agent-diary/` | Development decisions and progress log |
+
+### Known Limitations
+
+- **Movement**: Currently teleport-only (`/tp`). WASD-style physics-based movement is planned (see `docs/features/wasd-movement.md`). Note that MCPQ's `player.teleport(Vec3)` has a known issue — it reports success but may not actually move the player on some Paper/MCPQ versions. Fallback uses `/tp` command.
+- **Crafting**: Uses `/give` (creative/OP mode). Proper survival crafting with recipe matching is planned.
+- **Structure preservation**: The agent does not yet detect or respect existing player-built structures. Buildings, railroads, and NPC villages may be modified. This is a planned feature.
+- **Inventory**: Raw NBT is shown to the LLM as the primary view. The structured `InventoryManager` is available for programmatic access but the LLM prompt currently includes both structured and raw formats.
+- **Biomes**: The agent has no biome awareness — it cannot tell a forest from a desert.
+- **Combat**: Basic `/damage`-based attack only. Mob-specific strategies, armor, and weapons are not implemented.
+
+## Testing
+
+The project has **182 tests** organized in two tiers:
+
+| Tier | Count | Description | Dependencies |
+|------|-------|-------------|--------------|
+| **Unit** | 160 | Action handlers, NBT parsing, memory, goal fallbacks, config, chat commands, inventory manager | `MockMcpqClient` (in-memory mock, no server needed) |
+| **Integration** | 22 | Full think-act-observe loop, real MCPQ + real LLM | Paper 26.1.2 + MCPQ v2.2 + OpenRouter API key |
+
+### Test Infrastructure
+
+**`MockMcpqClient`** (in `tests/conftest.py`) simulates a full 3D world in memory with methods like `set_position()`, `set_block()`, `set_inventory()`, and `set_time()`. It records all commands and chat messages for assertion.
+
+**`MockLLMClient`** returns pre-configured action queues for deterministic testing of the agent loop. Supports `responses: list[tuple[str, dict]]` for ordered action sequences and `set_decompose_return(subgoals)` for goal decomposition tests.
+
+**Goal-verification helpers** (in `tests/test_integration.py`):
+- `actions_taken(orch) → list[str]` — all action names from short-term memory
+- `action_taken(orch, *names) → bool` — whether any given action was performed
+- `position_reached(orch, x, y, z, tolerance) → bool` — whether observations show target coordinates
+
+These helpers operate on in-memory Python dicts — essentially zero cost, no extra I/O.
+
+### Running Tests
+
+```bash
+# Install dev dependencies
+pip install -e ".[dev]"
+
+# All tests
+pytest tests/
+
+# Unit only
+pytest tests/ -k "not integration"
+
+# Integration only (server + API key required)
+pytest tests/test_integration.py -v --tb=short
+```
+
+Integration tests use real OpenRouter inference with `openai/gpt-oss-20b`. Ensure `OPENROUTER_API_KEY` is set in `.env` and the Paper server is running. Unit tests are fully self-contained and run in under 2 seconds.
 
 ## Extending
 

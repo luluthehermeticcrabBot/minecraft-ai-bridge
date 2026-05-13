@@ -22,6 +22,8 @@ services:
       MAX_PLAYERS: 10
       SPAWN_PROTECTION: 0
       VIEW_DISTANCE: 10
+      # Server operators (comma-separated, required for world manipulation)
+      OPS: "LuLuNyam,miau004258,AIBot,TestBot"
       # MCPQ plugin config — the plugin reads this from env
       MCPQ_PORT: 1789
     volumes:
@@ -41,12 +43,16 @@ services:
     build: .
     container_name: mc-bridge
     restart: unless-stopped
+    stdin_open: true
+    tty: true
     depends_on:
       minecraft:
         condition: service_healthy
     volumes:
       # Mount config.yaml so the bridge can read it
       - ./config.yaml:/app/config.yaml:ro
+      # Persistent memory database (SQLite)
+      - bridge-data:/app/data
     environment:
       # Override Minecraft / MCPQ hostname for Docker networking
       MINECRAFT_HOST: minecraft
@@ -57,11 +63,14 @@ services:
       LLM_PROVIDER: openrouter
       LLM_MODEL: openai/gpt-5-nano
       LLM_OPENROUTER_API_KEY: "${OPENROUTER_API_KEY}"
+      # Persistent memory database (SQLite)
+      AGENT_MEMORY_DB: /app/data/agent_memory.db
     # Array form keeps the goal as a single argument (no shell splitting)
-    command: ["--verbose", "${GOAL:-Build a house}"]
+    command: ["--verbose", "${GOAL:-Explore the area and report what you see}"]
     # The bridge has built-in retry logic (20 attempts with backoff),
     # so even if Paper takes longer than healthcheck_start_period,
     # the bridge will keep trying until MCPQ is ready.
 
 volumes:
   mc-world: {}
+  bridge-data: {}

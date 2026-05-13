@@ -39,7 +39,18 @@ OPENROUTER_API_KEY=sk-or-...
 # ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-### Step 3: Start the Server
+### Step 3: Configure Server Operators
+
+The bridge agent needs operator (OP) permissions to use world-manipulation commands (`/setblock`, `/give`, etc.). The `docker-compose.yml` includes an `OPS` env var on the minecraft service that grants OP to specific usernames:
+
+```yaml
+environment:
+  OPS: "AIBot,TestBot"
+```
+
+Add or remove usernames as needed for your fakeplayer configuration.
+
+### Step 4: Start the Server
 
 ```bash
 docker compose up -d minecraft
@@ -328,3 +339,28 @@ docker compose logs bridge
 # Look for: "Player 'AIBot' already present" or "spawning fake player"
 # And: "LLM decision: chat" with the actual reasoning
 ```
+
+## Running Tests
+
+The project has **182 tests** (160 unit + 22 integration):
+
+```bash
+# Install dev dependencies
+pip install -e ".[dev]"
+
+# Run all tests (requires a running Paper server + MCPQ for integration tests)
+pytest tests/
+
+# Run only unit tests (no server needed)
+pytest tests/ -k "not integration"
+
+# Run only integration tests
+pytest tests/test_integration.py -v
+
+# Run with live logging
+pytest tests/ -v --tb=short
+```
+
+Integration tests connect to a real MCPQ server and use real LLM inference (OpenRouter `openai/gpt-oss-20b`). Ensure your `.env` has a valid `OPENROUTER_API_KEY` and the Paper server is running.
+
+Unit tests use `MockMcpqClient` — an in-memory MCPQ mock that simulates a 3D world deterministically. No server or LLM needed.

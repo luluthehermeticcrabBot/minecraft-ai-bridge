@@ -28,8 +28,10 @@
 
 ### Bridge Layer (`minecraft_ai_bridge/bridge/`)
 - `orchestrator.py` — `Orchestrator` class with `run()` and `_step()` think-act-observe loop. Auto-spawns fake player on connect, teleports to safe location.
-- `goal_manager.py` — `GoalNode` tree, LLM-based decomposition, fallback plans for common goals (build, mine, farm, workshop, explore, generic)
+- `goal_manager.py` — `GoalNode` tree, LLM-based decomposition, fallback plans for common goals (build, mine, farm, workshop, explore, generic). Mining pattern uses `\bore\b` to avoid matching "Explore" via substring.
 - `memory.py` — `AgentMemory` with short-term (rolling deque) and long-term (facts set) memory
+- `chat_commands.py` — Incoming chat command parser (`!stop`, `!status`, `!follow`) for live agent control
+- `inventory_manager.py` — Structured inventory slot tracking with NBT parsing
 
 ### CLI (`minecraft_ai_bridge/main.py`, `__main__.py`)
 - `minecraft-ai-bridge [OPTIONS] [GOAL]` CLI with `--verbose`, `--config`, `--version`, `--list-providers`
@@ -41,7 +43,7 @@
 
 ### Infrastructure
 - `Dockerfile` — `python:3.13-slim`, pip installs the package
-- `docker-compose.yml` — Paper server (itzg/minecraft-server:latest with PAPER type, 1.21.4) + bridge service. MCPQ on port 1789. Plugin mounts. Fakeplayer plugins.
+- `docker-compose.yml` — Paper server (itzg/minecraft-server:latest with PAPER type, 1.21.4) + bridge service. MCPQ on port 1789. Plugin mounts. Fakeplayer plugins. OPS env var with operator usernames.
 - `scripts/download-plugins.sh` — downloads MCPQ v2.2 jar
 - `mcpq-config/config.yml` — MCPQ bound to `0.0.0.0:1789`
 - `mcpq-plugins/` — mounted plugin directory
@@ -81,7 +83,7 @@
 - **config.yaml volume mount**: Mounted read-only at `/app/config.yaml`. Changes require `docker compose restart bridge`.
 
 ### Code Quality
-- **No tests**: The project has zero unit/integration tests. High priority for next session.
+- **Tests**: 182 tests total (160 unit + 22 integration). Unit tests use `MockMcpqClient` for deterministic MCPQ simulation. Integration tests use a real MCPQ server + real LLM (OpenRouter `openai/gpt-oss-20b`) for end-to-end validation. All tests run against Paper 26.1.2. Run with `pytest tests/`.
 - **No type checking in CI**: `pyproject.toml` has dev deps for mypy/ruff but no CI setup.
 - **gRPC stubs are synchronous**: MCPQ generated stubs block; dispatched via `asyncio.to_thread`. Not ideal but works.
 - **RCON client is unmaintained**: Since the MCPQ migration, `rcon.py` isn't tested. Consider removing or marking deprecated.
@@ -105,11 +107,16 @@ Some LLMs (especially smaller/local ones) can't reliably output structured JSON 
 
 ## Priority Work Items
 
-### P0: Testing
-- Add unit tests for `GoalManager._fallback_decompose()` — all pattern+text combinations
-- Add unit tests for `format_state()` — various WorldState configurations
-- Add integration test: MCPQ connection → observe loop → actions
-- Mock LLM responses for deterministic testing
+### P0: None (Testing Complete)
+The 0.5.0 release completed the testing milestone:
+- **Unit tests** (160): MockMcpqClient covers all 24 actions, observer parsing, memory, goal fallback plans, config, inventory manager, chat commands
+- **Integration tests** (22): Full think-act-observe loop with real MCPQ server + real LLM inference (OpenRouter `openai/gpt-oss-20b`). Covers teleport, exploration, disconnect handling, fallback decomposition, failure counting, memory recording, chat command stop, and inventory creation.
+- **Goal-verification assertions**: Integration tests verify agent behavior via:
+  - `action_taken(orch, *names) → bool` — checks if the agent performed a specific action (parses `MemoryEntry.raw`)
+  - `actions_taken(orch) → list[str]` — all action names from short-term memory
+  - `position_reached(orch, x, y, z, tolerance) → bool` — checks observations for target coordinates
+  - These helpers are essentially free (in-memory dict parsing, no extra I/O)
+- **Real LLM tests**: 9/12 integration tests use real OpenRouter inference; 3 use `MockLLMClient` for deterministic edge cases (fallback plans, failure counting)
 
 ### P1: Observer Improvements
 - Parse inventory NBT into structured slot data (not raw command output)
@@ -157,9 +164,13 @@ Some LLMs (especially smaller/local ones) can't reliably output structured JSON 
 | `minecraft_ai_bridge/bridge/orchestrator.py` | Main agent loop, connection, step logic |
 | `minecraft_ai_bridge/bridge/goal_manager.py` | Goal tree, LLM decomposition, fallback plans |
 | `minecraft_ai_bridge/bridge/memory.py` | Short+long term memory |
+| `minecraft_ai_bridge/bridge/chat_commands.py` | Incoming chat command parser (!stop, !status, !follow) |
+| `minecraft_ai_bridge/bridge/inventory_manager.py` | Structured inventory slot tracking |
 | `config.yaml` | Default configuration |
 | `docker-compose.yml` | Paper server + bridge services |
 | `docs/*.md` | Full documentation set |
+| `tests/conftest.py` | MockMcpqClient, MockLLMClient, test fixtures |
+| `tests/test_*.py` | Unit + integration tests (182 total) |
 | `AGENTS.md` | This file |
 
 ## Environment Info
@@ -170,3 +181,35 @@ Some LLMs (especially smaller/local ones) can't reliably output structured JSON 
 - **MCPQ plugin**: v2.2
 - **fakeplayer**: v0.3.19 + CommandAPI 9.7.0
 - **Docker compose**: v2 format
+
+## Test Infrastructure
+
+### MockMcpqClient (`tests/conftest.py`)
+Full in-memory MCPQ mock simulating a 3D world. Methods:
+- `set_position()`, `set_block()`, `set_block_map()` — configure the world
+- `set_inventory()`, `set_time()`, `set_players()`, `set_biome()`, `set_player_nbt()` — configure state
+- `commands_ran`, `chat_messages_sent`, `last_command()` — assert on actions
+- `assert_command_contains(substring)`, `assert_chat_contains(substring)` — convenience assertions
+
+### MockLLMClient (`tests/conftest.py`)
+Returns pre-configured action queues. Supports:
+- `responses: list[tuple[str, dict]]` — ordered action responses
+- `set_decompose_return(subgoals)` — override goal decomposition
+- `prompts_received` — introspection of prompts sent
+
+### Goal-Verification Assertions
+Helpers in `tests/test_integration.py`:
+- `actions_taken(orch) → list[str]` — all actions from short-term memory
+- `action_taken(orch, *names) → bool` — whether any given action was taken
+- `position_reached(orch, x, y, z, tol) → bool` — whether observations show target coords
+
+### Test Organization
+| Directory | Tests | Description |
+|-----------|-------|-------------|
+| `tests/test_actions.py` | ~90 | All 24 action handlers with MockMcpqClient |
+| `tests/test_observer.py` | ~30 | NBT parsing, inventory parsing, observation formatting |
+| `tests/test_memory.py` | ~15 | Short/long-term memory, dedup, persistence |
+| `tests/test_goal_manager.py` | ~10 | Goal decomposition, fallback plans patterns |
+| `tests/test_chat_commands.py` | ~10 | Chat command parsing and dispatch |
+| `tests/test_inventory_manager.py` | ~5 | Inventory manager slot tracking |
+| `tests/test_integration.py` | 12 | Full agent loop with real MCPQ + real LLM |
