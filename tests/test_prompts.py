@@ -80,9 +80,11 @@ class TestFormatState:
         assert "day" in r or "Time" in r
 
     def test_scan_nearby(self):
-        r = format_state({
-            "scan_data": {"nearby": {"north": "stone", "south": "air"}},
-        })
+        r = format_state(
+            {
+                "scan_data": {"nearby": {"north": "stone", "south": "air"}},
+            }
+        )
         assert "north" in r
         assert "stone" in r
 

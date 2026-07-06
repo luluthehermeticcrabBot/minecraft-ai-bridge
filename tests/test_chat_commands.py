@@ -5,9 +5,9 @@ from __future__ import annotations
 import pytest
 
 from minecraft_ai_bridge.bridge.chat_commands import (
-    ChatCommandHandler,
     _COMMAND_RE,
     COMMANDS,
+    ChatCommandHandler,
 )
 from minecraft_ai_bridge.bridge.memory import AgentMemory
 
@@ -60,6 +60,7 @@ class TestHarness:
 
     def __init__(self):
         from tests.conftest import MockMcpqClient
+
         self._mc = MockMcpqClient()
         self._stop_requested = False
         self._follow_target = None
@@ -94,7 +95,7 @@ class TestCommandDispatch:
     async def test_handle_goto(self, harness):
         handler = ChatCommandHandler(harness)
         await handler.handle_command("!goto", "Player2", "Player")
-        harness._mc.assert_command_contains("tp @p Player2")
+        harness._mc.assert_command_contains("tp AIBot Player2")
 
     async def test_handle_follow(self, harness):
         handler = ChatCommandHandler(harness)

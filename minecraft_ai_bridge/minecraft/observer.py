@@ -13,7 +13,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
-from .actions import ActionType, ActionResult, execute_action
+from .actions import ActionResult, ActionType, execute_action
 from .mc_api import McpqClient
 
 logger = logging.getLogger(__name__)
@@ -118,9 +118,7 @@ class Observer:
         """Quick position-only check."""
         return await self._mc.get_player_pos()
 
-    async def _exec(
-        self, action: ActionType, params: dict | None = None
-    ) -> ActionResult:
+    async def _exec(self, action: ActionType, params: dict | None = None) -> ActionResult:
         return await execute_action(self._mc, action, params)
 
 
@@ -162,7 +160,7 @@ def _parse_inventory_nbt(raw: str) -> list[InventorySlot]:
     # Normalise: convert JSON-like NBT to proper JSON
     text = raw.strip()
     if text.startswith("Inventory: "):
-        text = text[len("Inventory: "):]
+        text = text[len("Inventory: ") :]
 
     text = text.replace("}", "},")
     # Remove trailing comma from array
@@ -173,15 +171,17 @@ def _parse_inventory_nbt(raw: str) -> list[InventorySlot]:
     # Pattern: {id:"...",Count:...b,Slot:...b,...}
     item_pattern = re.compile(
         r'id:\s*"([^"]+)"\s*,\s*'
-        r'Count:\s*(\d+)\s*b\s*,\s*'
-        r'Slot:\s*(-?\d+)\s*b',
+        r"Count:\s*(\d+)\s*b\s*,\s*"
+        r"Slot:\s*(-?\d+)\s*b",
     )
     for match in item_pattern.finditer(raw):
-        items.append(InventorySlot(
-            item_id=match.group(1),
-            count=int(match.group(2)),
-            slot=int(match.group(3)),
-        ))
+        items.append(
+            InventorySlot(
+                item_id=match.group(1),
+                count=int(match.group(2)),
+                slot=int(match.group(3)),
+            )
+        )
 
     # If regex found items, return them
     if items:
@@ -192,17 +192,19 @@ def _parse_inventory_nbt(raw: str) -> list[InventorySlot]:
         # Convert NBT-style booleans and byte suffixes to JSON
         clean = text
         # Remove trailing 'b' from numbers
-        clean = re.sub(r'(\d+)b', r'\1', clean)
+        clean = re.sub(r"(\d+)b", r"\1", clean)
         # Quote bare keys
-        clean = re.sub(r'(\w+):', r'"\1":', clean)
+        clean = re.sub(r"(\w+):", r'"\1":', clean)
         parsed = json.loads(clean)
         if isinstance(parsed, list):
             for entry in parsed:
-                items.append(InventorySlot(
-                    item_id=entry.get("id", "unknown"),
-                    count=int(entry.get("Count", 1)),
-                    slot=int(entry.get("Slot", 0)),
-                ))
+                items.append(
+                    InventorySlot(
+                        item_id=entry.get("id", "unknown"),
+                        count=int(entry.get("Count", 1)),
+                        slot=int(entry.get("Slot", 0)),
+                    )
+                )
     except (json.JSONDecodeError, ValueError, TypeError):
         pass
 

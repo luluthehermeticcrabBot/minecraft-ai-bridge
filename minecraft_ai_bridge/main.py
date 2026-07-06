@@ -27,11 +27,7 @@ from .config import AppConfig
 
 def _setup_logging(verbose: bool) -> None:
     level = logging.DEBUG if verbose else logging.INFO
-    fmt = (
-        "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-        if verbose
-        else "%(message)s"
-    )
+    fmt = "%(asctime)s [%(levelname)s] %(name)s: %(message)s" if verbose else "%(message)s"
     logging.basicConfig(
         level=level,
         format=fmt,
@@ -53,7 +49,8 @@ def _build_parser() -> argparse.ArgumentParser:
         help="High-level goal for the AI agent (e.g., 'Build a house')",
     )
     parser.add_argument(
-        "-c", "--config",
+        "-c",
+        "--config",
         default="config.yaml",
         help="Path to config YAML file (default: config.yaml)",
     )
@@ -71,6 +68,18 @@ def _build_parser() -> argparse.ArgumentParser:
         "--list-providers",
         action="store_true",
         help="List supported LLM providers and exit",
+    )
+    parser.add_argument(
+        "--max-iterations",
+        type=int,
+        default=None,
+        help="Maximum think-act-observe turns before stopping (default: config value, typically 100)",
+    )
+    parser.add_argument(
+        "--model",
+        type=str,
+        default=None,
+        help="LLM model name override (e.g., 'openai/gpt-4o-mini', 'anthropic/claude-sonnet-4')",
     )
     return parser
 
@@ -102,9 +111,13 @@ async def _async_main(args: argparse.Namespace) -> int:
 
     config = AppConfig.from_yaml(str(config_path))
 
-    # Merge verbosity
+    # Merge CLI overrides
     if args.verbose:
         config.bridge.verbose = True
+    if args.max_iterations is not None:
+        config.bridge.max_iterations = args.max_iterations
+    if args.model is not None:
+        config.llm.model = args.model
 
     _setup_logging(config.bridge.verbose)
 

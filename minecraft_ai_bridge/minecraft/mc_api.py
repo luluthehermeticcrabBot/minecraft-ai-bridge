@@ -60,14 +60,17 @@ class McpqClient:
         for attempt in range(1, retries + 1):
             try:
                 self._mc = await asyncio.to_thread(
-                    Minecraft, host=self._host, port=self._port,
+                    Minecraft,
+                    host=self._host,
+                    port=self._port,
                 )
                 # Verify the connection by fetching the Minecraft version
                 version = await self._run(self._mc.getMinecraftVersion)
                 server = await self._run(self._mc.getServerVersion)
                 logger.info(
                     "Connected to MCPQ plugin — %s (MC %s)",
-                    server, version,
+                    server,
+                    version,
                 )
                 return
             except Exception as exc:
@@ -77,7 +80,8 @@ class McpqClient:
                     wait = min(delay * (1.5 ** (attempt - 1)), 30.0)
                     logger.warning(
                         "MCPQ not ready yet (attempt %d/%d): %s  Retrying in %.0fs …",
-                        attempt, retries,
+                        attempt,
+                        retries,
                         exc.__class__.__name__,
                         wait,
                     )
@@ -146,11 +150,40 @@ class McpqClient:
 
         return info
 
+    @property
+    def player_name(self) -> str:
+        """The configured player name."""
+        return self._player_name
+
+    async def run_as_player(self, command: str) -> str:
+        """Run a Minecraft command **as** the configured player.
+
+        Replaces ``@p`` with the actual player name so the command
+        always targets the bot, never a human player who happens to
+        be nearest.
+        """
+        substituted = command.replace("@p", self._player_name)
+        return await self.run_command_blocking(substituted)
+
+    async def get_chat_events(self):
+        """Poll for recent chat events via MCPQ's event system.
+
+        Returns a list of ``ChatEvent`` objects, each with ``.player.name``
+        and ``.message`` attributes.  Call this periodically from the
+        chat command handler to detect ``!commands``.
+        """
+        if self._mc is None:
+            return []
+        return await self._run(self._mc.events.chat.poll)
+
     async def teleport_player(self, x: float, y: float, z: float) -> None:
-        """Teleport the configured player to an absolute position."""
-        player = await self.get_player()
-        if player is not None:
-            await self._run(player.teleport, Vec3(x, y, z))
+        """Teleport the configured player to an absolute position.
+
+        Uses ``/tp`` command because MCPQ's ``player.teleport(Vec3)`` gRPC
+        call silently fails on Paper 26.1.2 (reports success but doesn't
+        actually move the player).
+        """
+        await self.run_as_player(f"tp @p {x} {y} {z}")
 
     # ── World methods ─────────────────────────────────────────────────
 
@@ -161,7 +194,11 @@ class McpqClient:
         return str(block.name) if block else "unknown"
 
     async def set_block(
-        self, block_type: str, x: int, y: int, z: int,
+        self,
+        block_type: str,
+        x: int,
+        y: int,
+        z: int,
     ) -> None:
         """Place ``block_type`` at (x, y, z), overwriting anything there."""
         assert self._mc is not None
@@ -169,7 +206,9 @@ class McpqClient:
 
     async def set_sign(
         self,
-        x: int, y: int, z: int,
+        x: int,
+        y: int,
+        z: int,
         lines: list[str],
         color: str = "black",
         glowing: bool = False,
@@ -188,8 +227,10 @@ class McpqClient:
             self._mc.setSign,
             Vec3(x, y, z),
             lines,
-            color=color, glowing=glowing,
-            direction=direction, sign_block=sign_block,
+            color=color,
+            glowing=glowing,
+            direction=direction,
+            sign_block=sign_block,
         )
 
     # ── Commands ──────────────────────────────────────────────────────
@@ -293,12 +334,22 @@ class McpqClient:
         # This works on Paper 1.21.4 but is slow — only run when
         # heuristics don't give a clear answer.
         common_biomes = [
-            "plains", "desert", "forest", "taiga", "snowy_plains",
-            "badlands", "ocean", "river", "swamp", "jungle",
+            "plains",
+            "desert",
+            "forest",
+            "taiga",
+            "snowy_plains",
+            "badlands",
+            "ocean",
+            "river",
+            "swamp",
+            "jungle",
         ]
         for biome in common_biomes:
             try:
-                check_cmd = f"execute if biome {x} {y} {z} in minecraft:{biome} run say __biome_{biome}__"
+                check_cmd = (
+                    f"execute if biome {x} {y} {z} in minecraft:{biome} run say __biome_{biome}__"
+                )
                 resp = await self.run_command_blocking(check_cmd)
                 if f"__biome_{biome}__" in resp:
                     return biome

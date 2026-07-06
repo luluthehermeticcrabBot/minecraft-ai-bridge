@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .orchestrator import Orchestrator
@@ -61,43 +61,27 @@ class ChatCommandHandler:
     async def poll(self) -> None:
         """Check for new chat messages and process any matching commands.
 
-        Should be called once per agent turn.
+        Uses MCPQ's ``ChatEvent`` polling API to catch in-game chat
+        messages.  Should be called once per agent turn.
         """
         mc = getattr(self._orch, "_mc", None)
         if mc is None:
             return
 
         try:
-            # Use /data get to fetch the server's latest chat log snippet.
-            # Paper stores the last few chat messages in ``log`` or we
-            # can use the scoreboard trick below.
-            if hasattr(mc, "get_chat_log"):
-                raw = await mc.get_chat_log()
-            else:
-                # Fallback: run /msg to self as a chat probe, then read
-                # the game log via a command that returns recent messages.
-                # On Paper the command ``/log`` or ``/seed`` won't help.
-                # We use a creative approach: check the server log via
-                # /data get block if a command-block is set up, OR simply
-                # use MCPQ's get_players_online + assume players chat.
-                #
-                # For now this is a best-effort poll.  A full
-                # implementation would use MCPQ's built-in chat listener
-                # if the plugin exposes one.
-                raw = ""
+            events = await mc.get_chat_events()
         except Exception:
             return
 
-        if not raw:
+        if not events:
             return
 
-        # Avoid re-processing the same batch
-        if raw == self._last_check:
-            return
-        self._last_check = raw
-
-        lines = raw.split("\n")
-        for line in lines:
+        for event in events:
+            # Each ChatEvent has .player.name and .message
+            sender = getattr(event, "player", None)
+            sender_name = getattr(sender, "name", "?") if sender else "?"
+            message = getattr(event, "message", "")
+            line = f"<{sender_name}> {message}"
             await self._process_line(line.strip())
 
     async def _process_line(self, line: str) -> None:
@@ -126,12 +110,12 @@ class ChatCommandHandler:
         """Route a parsed command to the appropriate handler."""
         dispatch = {
             "!status": self._cmd_status,
-            "!stop":   self._cmd_stop,
-            "!goal":   self._cmd_goal,
-            "!goto":   self._cmd_goto,
+            "!stop": self._cmd_stop,
+            "!goal": self._cmd_goal,
+            "!goto": self._cmd_goto,
             "!follow": self._cmd_follow,
-            "!come":   self._cmd_come,
-            "!help":   self._cmd_help,
+            "!come": self._cmd_come,
+            "!help": self._cmd_help,
         }
         handler = dispatch.get(command)
         if handler:
@@ -144,7 +128,7 @@ class ChatCommandHandler:
         orch = self._orch
         lines = [
             f"@{sender} Status:",
-            f"  Goal: \"{getattr(orch, '_goals', None) and orch._goals.current_goal or 'none'}\"",
+            f'  Goal: "{getattr(orch, "_goals", None) and orch._goals.current_goal or "none"}"',
             f"  Turns: {getattr(orch, '_turn', 0)}",
         ]
         # Add position if available
@@ -174,8 +158,7 @@ class ChatCommandHandler:
             orch._memory.clear_short_term()
             await orch._goals.set_goal(args)
             await self._send(
-                f"@{sender} Goal re-assigned to: \"{args}\" "
-                f"({orch._goals.sub_goal_count} sub-goals)"
+                f'@{sender} Goal re-assigned to: "{args}" ({orch._goals.sub_goal_count} sub-goals)'
             )
 
     async def _cmd_goto(self, args: str, sender: str) -> None:
@@ -187,7 +170,7 @@ class ChatCommandHandler:
         mc = getattr(self._orch, "_mc", None)
         if mc and mc.connected:
             try:
-                await mc.run_command_blocking(f"tp @p {target}")
+                await mc.run_as_player(f"tp @p {target}")
                 await self._send(f"@{sender} Teleported to {target}")
             except Exception as exc:
                 await self._send(f"@{sender} Could not teleport to {target}: {exc}")
@@ -201,14 +184,14 @@ class ChatCommandHandler:
         orch = self._orch
         orch._follow_target = target
         orch._memory.remember_fact(f"Following player: {target}")
-        await self._send(f"@{sender} Now following {target}")
+        await self._send(f"@{sender} Now following {target} (stays ~4 blocks away)")
 
     async def _cmd_come(self, args: str, sender: str) -> None:
         """Teleport the sender to the agent's position."""
         mc = getattr(self._orch, "_mc", None)
         if mc and mc.connected:
             try:
-                await mc.run_command_blocking(f"tp {sender} @p")
+                await mc.run_as_player(f"tp {sender} @p")
                 await self._send(f"@{sender} You have been teleported to me!")
             except Exception as exc:
                 await self._send(f"@{sender} Could not teleport you: {exc}")

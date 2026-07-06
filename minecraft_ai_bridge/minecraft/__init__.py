@@ -1,7 +1,7 @@
 """Minecraft server interface layer."""
 
+from .actions import ActionResult, ActionType, execute_action
 from .mc_api import McpqClient
-from .actions import ActionType, ActionResult, execute_action
 from .observer import Observer, WorldState
 
 __all__ = [

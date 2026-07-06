@@ -1,111 +1,82 @@
 # WASD-Style Human-Like Movement
 
-**Status:** Planning  
+**Status:** Implemented ✅  
 **Priority:** High  
 **Dependencies:** Scanner, coordinate awareness, MCPQ execute-command  
 
 ## Goal
 
-Replace the current instant-teleport movement (`/tp @p`) with
-step-by-step human-like movement using WASD controls, enabling
-survival-mode compatibility and natural interaction with the world.
+Replace the instant-teleport movement (`/tp @p`) with step-by-step human-like movement using `/execute`-based entity commands, enabling survival-mode compatibility and natural interaction with the world.
 
-## Current Implementation
+## Implementation
 
-All movement currently uses Minecraft's `/tp` command:
-- `move_forward`: `tp @p ^ ^ ^{steps}` (relative forward via caret notation)
-- `move_back`: `tp @p ^ ^ ^-{steps}`
-- `turn_left`: `tp @p ~ ~ ~ ~-90 ~`
-- `turn_right`: `tp @p ~ ~ ~ ~90 ~`
-- `jump`: `tp @p ~ ~1 ~`
-- `teleport` / `move_to`: `tp @p <x> <y> <z>`
+### Collision Detection
 
-This works in creative mode but has several limitations:
-- Ignores collision detection (walks through walls)
-- No fall damage
-- No hunger cost
-- Can teleport through blocks
-- Doesn't trigger pressure plates, tripwires, etc.
-
-## Planned Architecture
-
-### Level 1: Execute-Based Movement (NEXT)
-
-Replace `/tp` with `/execute`-based movement that simulates WASD input:
-
-```
-move_forward  → execute as @p at @s run tp @s ^ ^ ^0.5
-turn_left     → execute as @p at @s run tp @s ~ ~ ~ ~-15 ~
-```
-
-Key differences:
-- Small incremental steps (0.5 blocks instead of multi-block teleports)
-- Gradual rotation (15° instead of 90°)
-- Actual entity movement (triggers collisions, fall, etc.)
-
-### Level 2: Collision Detection
-
-Before each movement step, scan the target block:
-- If the block is solid, don't move there (avoid walking through walls)
-- If the block is a drop-off, check if the fall is survivable
-- Auto-jump over single-block obstacles (slabs, carpets)
+Before each movement step, the target block is scanned:
 
 ```python
-async def _can_move_to(self, x: int, y: int, z: int) -> bool:
-    """Check if the player can occupy this space."""
-    # Must be air or passable block at head level
+async def _can_move_to(mc, x, y, z):
     head = await mc.get_block(x, y + 1, z)
-    # Must be air or passable at feet level  
     feet = await mc.get_block(x, y, z)
-    # Ground below
     below = await mc.get_block(x, y - 1, z)
-    return (
-        _is_passable(head) and
-        _is_passable(feet) and
-        not _is_hazard(below)  # e.g. lava, cactus
-    )
+    # Must be passable at head + feet, no hazards
+    return _is_passable(head) and _is_passable(feet) and not _is_hazard(below) and not _is_hazard(head) and not _is_hazard(feet)
 ```
 
-### Level 3: Pathfinding
+### Execute-Based Movement Commands
 
-Replace simple directional movement with A*-based pathfinding:
-- Target coordinate → BFS/A* through walkable blocks
-- Respect Y-level changes (stairs, slabs, ladders)
-- Avoid hazards (lava, cactus, cliffs)
+All movement now uses `/execute as @p at @s run` patterns:
 
-Implementation options:
-- **MCPQ + local search**: Scan blocks around the player, build a local
-  graph, route through it. Cheap enough for a single step per turn.
-- **Pre-computed map**: Not feasible without a full world download (too
-  large for typical servers).
+| Action | Command | Notes |
+|--------|---------|-------|
+| `move_forward` | `execute as @p at @s run tp @s ^ ^ ^0.5` | 0.5-block caret-relative steps |
+| `move_back` | `execute as @p at @s run tp @s ^ ^ ^-0.5` | Backward steps |
+| `turn_left` | `execute as @p at @s run tp @s ~ ~ ~ ~-15 ~` | 15° left rotation |
+| `turn_right` | `execute as @p at @s run tp @s ~ ~ ~ ~15 ~` | 15° right rotation |
+| `jump` | `execute as @p at @s run tp @s ~ ~1 ~` | One-block jump |
+| `walk_to` | Step-by-step via `_walk_toward()` | Uses `/execute facing` + caret teleport |
+| `teleport` / `move_to` | `tp @p <x> <y> <z>` | Fallback for long distances |
 
-### Level 4: Survival Enhancements
+### Auto-Step-Over
 
-- Hunger-aware movement: slow down when food is low
-- F3-debug-style info overlay for the LLM (speed, direction, biome)
-- Sprint toggle for faster travel
+When a collision is detected at the target position, the system automatically tries one block up (for slabs, stairs, carpets):
+
+1. Check if `_can_move_to(x, y+1, z)` is passable
+2. If yes: move forward 0.5 blocks, then step up 1 block
+3. If no: report obstruction and stop
+
+### Hazard Avoidance
+
+Before each step:
+- Check the block below the target for hazards (lava, fire, cactus, magma)
+- Check the feet/head positions for hazards
+- If a hazard is detected, the step is aborted with a descriptive error
+
+### Walking to Coordinates
+
+The `walk_to` action (recommended for all short-to-medium distance movement):
+- If distance > 50 blocks → falls back to teleport
+- If distance <= 50 blocks → uses `_walk_toward()` with step-by-step collision-checked walking
+- Returns success if within 3 blocks of the target
+
+## What Changed
+
+1. **`actions.py`**: All movement handlers (`_move_forward`, `_move_back`, `_turn_left`, `_turn_right`, `_jump`) replaced bare `/tp` commands with `/execute as @p at @s run tp @s` patterns. Added auto-jump for obstacles, collision checks before every step, and hazard detection.
+
+2. **`prompts.py`**: SYSTEM_PROMPT updated to recommend `walk_to` as the default movement action for short-to-medium distances.
+
+3. **`tests/test_actions.py`**: Added tests verifying:
+   - Commands use `/execute as @p at @s run` pattern
+   - Step-by-step movement with collision detection
+   - Auto-jump over obstacles
+   - Hazard avoidance (stops before lava)
+   - Backward movement with execute-based commands
+
+## Remaining Work (Future)
+
+- A*-based pathfinding for multi-block navigation
+- Hunger-aware movement (slow down when food is low)
+- Sprint toggle
 - Sneak mode for edge-walking
 - Elytra flight detection + glide control
-
-## Comparison With Other Bot Projects
-
-| Project | Movement | Collision | Survival |
-|---------|----------|-----------|----------|
-| **Mineflayer (JS)** | Full WASD via node-minecraft-protocol | Yes | Yes |
-| **pyCraft (Python)** | Packet-level player movement | Partial | Yes (outdated) |
-| **Baritone (Java)** | Full pathfinding (A*) | Yes | Yes |
-| **MCPQ Bot (this project)** | `/tp` teleport | No | No |
-
-The goal is to reach Mineflayer-level movement fidelity while staying
-within the MCPQ plugin architecture (no client-side mod needed).
-
-## Implementation Plan
-
-1. Add `_walk_to(x, y, z)` method to `McpqClient` — uses `/execute`
-   with small steps + collision checks
-2. Replace `_move_to` handler in `actions.py` to use `_walk_to` when
-   in survival mode, fall back to `/tp` in creative
-3. Add `_is_passable()` and `_is_hazard()` helpers
-4. Add pathfinding for multi-block navigation
-5. Add `collision` field to `WorldState` (nearby solid blocks)
-6. Update action descriptions and SYSTEM_PROMPT for the new movement
+- Full survival-mode physics (fall damage, hunger cost)

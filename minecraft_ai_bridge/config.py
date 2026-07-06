@@ -3,9 +3,9 @@
 from pathlib import Path
 from typing import Literal
 
+import yaml
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-import yaml
 
 
 class MinecraftConfig(BaseSettings):
@@ -24,6 +24,7 @@ class MCPQConfig(BaseSettings):
     MCPQ replaces both pyCraft (bot) and most RCON usage — it gives the
     bridge direct world-manipulation and player-control APIs via gRPC.
     """
+
     host: str = "localhost"
     port: int = 1789
     player_name: str = "AIBot"
@@ -60,6 +61,7 @@ class LLMConfig(BaseSettings):
     def fallback_openai(cls, v: str) -> str:
         if not v:
             import os
+
             return os.getenv("OPENAI_API_KEY", "")
         return v
 
@@ -68,6 +70,7 @@ class LLMConfig(BaseSettings):
     def fallback_anthropic(cls, v: str) -> str:
         if not v:
             import os
+
             return os.getenv("ANTHROPIC_API_KEY", "")
         return v
 
@@ -76,6 +79,7 @@ class LLMConfig(BaseSettings):
     def fallback_openrouter(cls, v: str) -> str:
         if not v:
             import os
+
             return os.getenv("OPENROUTER_API_KEY", "")
         return v
 
@@ -112,6 +116,7 @@ class AppConfig(BaseSettings):
         Priority: environment vars > YAML > field defaults.
         """
         import os as _os
+
         path = Path(path)
 
         # Start from pure env-resolved config (env > defaults)

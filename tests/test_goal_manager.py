@@ -11,6 +11,7 @@ from minecraft_ai_bridge.llm.models import AgentGoal
 @pytest.fixture
 def mock_llm():
     from tests.conftest import MockLLMClient
+
     return MockLLMClient()
 
 
@@ -28,10 +29,12 @@ class TestGoalDecomposition:
         assert len(root.sub_goals) > 0
 
     async def test_set_goal_with_llm(self, gm, mock_llm):
-        mock_llm.set_decompose_return([
-            {"step": 1, "description": "Gather wood", "expected_actions": ["check"]},
-            {"step": 2, "description": "Craft planks", "expected_actions": ["craft"]},
-        ])
+        mock_llm.set_decompose_return(
+            [
+                {"step": 1, "description": "Gather wood", "expected_actions": ["check"]},
+                {"step": 2, "description": "Craft planks", "expected_actions": ["craft"]},
+            ]
+        )
         root = await gm.set_goal("Build a house")
         assert len(root.sub_goals) == 2
         assert root.sub_goals[0].description == "Gather wood"
@@ -41,10 +44,13 @@ class TestGoalDecomposition:
         assert len(root.sub_goals) > 0
 
     async def test_set_from_subgoals(self, gm):
-        root = gm.set_goal_from_subgoals("Test", [
-            {"description": "Step 1"},
-            {"description": "Step 2"},
-        ])
+        root = gm.set_goal_from_subgoals(
+            "Test",
+            [
+                {"description": "Step 1"},
+                {"description": "Step 2"},
+            ],
+        )
         assert len(root.sub_goals) == 2
 
 

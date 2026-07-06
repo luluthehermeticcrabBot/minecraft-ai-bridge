@@ -123,6 +123,14 @@ _FALLBACK_PLANS: list[tuple[re.Pattern, str, list[str]]] = [
         ],
     ),
     (
+        re.compile(r"\bsay\s+(hi|hello|hey|greetings)\b|^hi|^hello|chat\b", re.IGNORECASE),
+        "Send a chat message",
+        [
+            "Send the requested message in the in-game chat",
+            "Signal the task is complete",
+        ],
+    ),
+    (
         re.compile(r"describe|report|say|tell|announce|chat.*what", re.IGNORECASE),
         "Observe and describe surroundings",
         [
@@ -168,7 +176,7 @@ class GoalManager:
         if self._llm:
             logger.info("Decomposing goal: %s", description)
             subgoals = await self._llm.decompose_goal(description)
-            if subgoals:
+            if subgoals and not self._looks_hallucinated(description, subgoals):
                 for sg_data in subgoals:
                     desc = sg_data.get("description", sg_data.get("desc", "Unknown sub-goal"))
                     sg = AgentGoal(
@@ -179,13 +187,18 @@ class GoalManager:
                     )
                     sg._parent_ref = self._root
                     self._root.sub_goals.append(sg)
-                logger.info(
-                    "Decomposed into %d sub-goals", self.sub_goal_count
-                )
+                logger.info("Decomposed into %d sub-goals", self.sub_goal_count)
                 self._current = self._root.active_sub_goal or self._root
                 return self._root
             else:
-                logger.info("LLM returned no sub-goals; trying fallback decomposition.")
+                if subgoals:
+                    logger.warning(
+                        "LLM decomposition rejected as hallucinated (%d sub-goals); "
+                        "trying fallback decomposition.",
+                        len(subgoals),
+                    )
+                else:
+                    logger.info("LLM returned no sub-goals; trying fallback decomposition.")
         else:
             logger.info("No LLM client for decomposition; trying fallback decomposition.")
 
@@ -230,13 +243,62 @@ class GoalManager:
             self._root.sub_goals.append(sg)
         logger.info("Fallback decomposition: %d sub-goals", len(steps))
 
+    @staticmethod
+    def _looks_hallucinated(goal: str, subgoals: list[dict[str, Any]]) -> bool:
+        """Sanity-check whether LLM decomposition looks hallucinated.
+
+        An LLM may sometimes invent coordinates, locations, or targets
+        that don't exist in the original goal.  When that happens, the
+        agent gets stuck waiting for a non-existent objective.
+
+        Returns True if the sub-goals appear to reference coordinates
+        or locations not present in the original goal description.
+        """
+        if not subgoals:
+            return False
+
+        # Collect all sub-goal descriptions
+        descriptions = [sg.get("description", sg.get("desc", "")) for sg in subgoals]
+        combined = " ".join(descriptions).lower()
+
+        # Check for coordinate/location references
+        has_coord_refs = bool(
+            re.search(
+                r"target\s*coord|teleport\s+to|move\s+to\s+coord|"
+                r"go\s+to\s+\d|navigate\s+to|travel\s+to|"
+                r"locate\s+coord|find\s+coord|reach\s+coord",
+                combined,
+            )
+        )
+
+        # Check if the original goal contains any coordinate references
+        goal_lower = goal.lower()
+        goal_has_coords = bool(
+            re.search(
+                r"teleport|coord|\bgo\s+to\b|\bmove\s+to\b|"
+                r"\bat\s+\(|\blocate\b|\bnavigate\b",
+                goal_lower,
+            )
+        )
+
+        # If sub-goals reference teleport/move-to-coords but the goal
+        # doesn't mention coordinates or teleportation, it's hallucinated.
+        if has_coord_refs and not goal_has_coords:
+            logger.warning(
+                "Hallucination detected: sub-goals reference coordinates but "
+                "goal does not mention any."
+            )
+            return True
+
+        return False
+
     def set_goal_from_subgoals(self, description: str, subgoals: list[dict[str, Any]]) -> AgentGoal:
         """Set a pre-decomposed goal (no LLM call)."""
         self._root = AgentGoal(description=description, depth=0)
         for i, sg in enumerate(subgoals):
             self._root.sub_goals.append(
                 AgentGoal(
-                    description=sg.get("description", f"Step {i+1}"),
+                    description=sg.get("description", f"Step {i + 1}"),
                     priority=i + 1,
                     depth=1,
                     parent_goal=description,

@@ -222,7 +222,10 @@ class OpenAIClient(LLMClient):
             response = await self._client.chat.completions.create(
                 model=self._model,
                 messages=[
-                    {"role": "system", "content": "You are a Minecraft task planner. Return only valid JSON."},
+                    {
+                        "role": "system",
+                        "content": "You are a Minecraft task planner. Return only valid JSON.",
+                    },
                     {"role": "user", "content": prompt},
                 ],
                 temperature=0.3,
@@ -282,9 +285,7 @@ class AnthropicClient(LLMClient):
         tool_choice: str = "auto",
     ) -> LLMResponse:
         anthropic_messages = [
-            {"role": m.role.value, "content": m.content}
-            for m in messages
-            if m.role != Role.SYSTEM
+            {"role": m.role.value, "content": m.content} for m in messages if m.role != Role.SYSTEM
         ]
 
         tool_config = {
@@ -309,7 +310,9 @@ class AnthropicClient(LLMClient):
 
         for block in response.content:
             if block.type == "tool_use":
-                args = block.input if hasattr(block, "input") else block.model_dump().get("input", {})
+                args = (
+                    block.input if hasattr(block, "input") else block.model_dump().get("input", {})
+                )
                 return LLMResponse(
                     thought="",
                     action=args.get("action", "wait"),
@@ -329,6 +332,7 @@ class AnthropicClient(LLMClient):
 
     async def decompose_goal(self, goal: str) -> list[dict[str, Any]]:
         from .prompts import GOAL_DECOMPOSE_PROMPT
+
         prompt = string.Template(GOAL_DECOMPOSE_PROMPT).safe_substitute(goal=goal)
         try:
             response = await self._client.messages.create(
@@ -338,9 +342,7 @@ class AnthropicClient(LLMClient):
                 temperature=0.3,
                 max_tokens=1024,
             )
-            content = "".join(
-                b.text for b in response.content if b.type == "text"
-            )
+            content = "".join(b.text for b in response.content if b.type == "text")
             parsed = json.loads(content)
             if isinstance(parsed, dict):
                 return parsed.get("subgoals", parsed.get("steps", []))
@@ -402,6 +404,7 @@ class OllamaClient(LLMClient):
             logger.error("Ollama call failed: %s", exc)
             return _make_wait_response(f"Ollama error: {exc}")
 
+        # Try strict JSON parse first
         try:
             parsed = json.loads(content)
             return LLMResponse(
@@ -410,17 +413,59 @@ class OllamaClient(LLMClient):
                 reasoning=parsed.get("reasoning", ""),
             )
         except json.JSONDecodeError:
-            return _make_wait_response("JSON parse error from Ollama.", seconds=3)
+            pass
+
+        # Fallback: try to extract JSON from text (some models ignore format: json)
+        obj = _parse_json_from_text(content)
+        if obj and "action" in obj:
+            return LLMResponse(
+                action=obj["action"],
+                action_params=obj.get("action_params", {}),
+                reasoning=obj.get("reasoning", ""),
+            )
+
+        # Final fallback: retry WITHOUT forced JSON format
+        logger.warning("JSON mode failed for model %s — retrying without forced JSON format", self._model)
+        try:
+            import httpx as _httpx
+            retry_payload = {
+                "model": self._model,
+                "messages": ollama_messages,
+                "temperature": self._temperature,
+                "max_tokens": self._max_tokens,
+                "stream": False,
+                # Deliberately omit format: json
+            }
+            async with _httpx.AsyncClient(timeout=60) as http:
+                resp = await http.post(f"{self._base_url}/api/chat", json=retry_payload)
+                resp.raise_for_status()
+                retry_data = resp.json()
+                retry_content = retry_data.get("message", {}).get("content", "{}")
+            obj = _parse_json_from_text(retry_content)
+            if obj and "action" in obj:
+                return LLMResponse(
+                    action=obj["action"],
+                    action_params=obj.get("action_params", {}),
+                    reasoning=obj.get("reasoning", ""),
+                )
+        except Exception as retry_err:
+            logger.warning("Ollama fallback also failed: %s", retry_err)
+
+        return _make_wait_response("JSON parse error from Ollama.", seconds=3)
 
     async def decompose_goal(self, goal: str) -> list[dict[str, Any]]:
         import httpx
 
         from .prompts import GOAL_DECOMPOSE_PROMPT
+
         prompt = string.Template(GOAL_DECOMPOSE_PROMPT).safe_substitute(goal=goal)
         payload = {
             "model": self._model,
             "messages": [
-                {"role": "system", "content": "You are a Minecraft task planner. Return only valid JSON."},
+                {
+                    "role": "system",
+                    "content": "You are a Minecraft task planner. Return only valid JSON.",
+                },
                 {"role": "user", "content": prompt},
             ],
             "temperature": 0.3,
@@ -537,12 +582,16 @@ class OpenRouterClient(LLMClient):
 
     async def decompose_goal(self, goal: str) -> list[dict[str, Any]]:
         from .prompts import GOAL_DECOMPOSE_PROMPT
+
         prompt = string.Template(GOAL_DECOMPOSE_PROMPT).safe_substitute(goal=goal)
         try:
             response = await self._client.chat.completions.create(
                 model=self._model,
                 messages=[
-                    {"role": "system", "content": "You are a Minecraft task planner. Return only valid JSON."},
+                    {
+                        "role": "system",
+                        "content": "You are a Minecraft task planner. Return only valid JSON.",
+                    },
                     {"role": "user", "content": prompt},
                 ],
                 temperature=0.3,
@@ -617,22 +666,15 @@ class OpenCodeServerClient(LLMClient):
             data = resp.json()
             # The session ID may be under "id" or "_id" or "sessionID"
             self._session_id = (
-                data.get("id")
-                or data.get("_id")
-                or data.get("sessionID")
-                or data.get("session_id")
+                data.get("id") or data.get("_id") or data.get("sessionID") or data.get("session_id")
             )
             if not self._session_id:
-                logger.warning(
-                    "Could not find session ID in response: %s", data
-                )
+                logger.warning("Could not find session ID in response: %s", data)
                 # Fallback: use a generated ID
                 self._session_id = f"session_{id(self)}"
             logger.info("Session created: %s", self._session_id)
         except Exception as exc:
-            logger.warning(
-                "Session creation failed (%s). Using fallback session ID.", exc
-            )
+            logger.warning("Session creation failed (%s). Using fallback session ID.", exc)
             self._session_id = f"session_{id(self)}"
 
         return self._session_id
@@ -708,9 +750,7 @@ class OpenCodeServerClient(LLMClient):
 
             # Standard OpenCode tool_use part
             if ptype == "tool_use":
-                tool_block = part.get(
-                    "tool_use", part
-                )  # some servers flatten
+                tool_block = part.get("tool_use", part)  # some servers flatten
                 if isinstance(tool_block, dict):
                     name = tool_block.get("name", "")
                     inp = tool_block.get("input", {})
@@ -755,9 +795,7 @@ class OpenCodeServerClient(LLMClient):
                     )
 
         # Fallback: check the whole response for a text field
-        full_text = data.get("text", "") or (
-            parts[0].get("text", "") if parts else ""
-        )
+        full_text = data.get("text", "") or (parts[0].get("text", "") if parts else "")
         obj = _parse_json_from_text(full_text)
         if obj and "action" in obj:
             return LLMResponse(
@@ -767,9 +805,7 @@ class OpenCodeServerClient(LLMClient):
                 reasoning=obj.get("reasoning", ""),
             )
 
-        return _make_wait_response(
-            "No parseable tool call from OpenCode server.", seconds=3
-        )
+        return _make_wait_response("No parseable tool call from OpenCode server.", seconds=3)
 
     async def decompose_goal(self, goal: str) -> list[dict[str, Any]]:
         from .prompts import GOAL_DECOMPOSE_PROMPT
@@ -851,9 +887,7 @@ def create_llm_client(config: Any) -> LLMClient:
     elif provider == "anthropic":
         key = config.llm.anthropic_api_key or os.getenv("ANTHROPIC_API_KEY", "")
         if not key:
-            raise ValueError(
-                "Anthropic API key not set. Set ANTHROPIC_API_KEY env var."
-            )
+            raise ValueError("Anthropic API key not set. Set ANTHROPIC_API_KEY env var.")
         return AnthropicClient(api_key=key, model=model, temperature=temp, max_tokens=max_tok)
 
     elif provider == "ollama":
@@ -863,9 +897,7 @@ def create_llm_client(config: Any) -> LLMClient:
     elif provider == "openrouter":
         key = config.llm.openrouter_api_key or os.getenv("OPENROUTER_API_KEY", "")
         if not key:
-            raise ValueError(
-                "OpenRouter API key not set. Set OPENROUTER_API_KEY env var."
-            )
+            raise ValueError("OpenRouter API key not set. Set OPENROUTER_API_KEY env var.")
         return OpenRouterClient(
             api_key=key,
             model=model,

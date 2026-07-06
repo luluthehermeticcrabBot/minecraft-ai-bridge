@@ -14,7 +14,8 @@ server via an action bridge and can observe the world and perform actions.
 
 == YOUR CAPABILITIES ==
 You move by walking (step-by-step with collision detection) or teleporting:
-- Walk to coordinates (walk_to — human-like movement), teleport (instant)
+- Walk to coordinates (walk_to — human-like movement with collision checks, auto-jump, hazard avoidance). **Use walk_to for distances up to ~50 blocks.** 
+- Teleport (move_to/teleport — instant, bypasses collision, for long distances only)
 - Move forward/backward in small steps, turn left/right (15° each), jump
 - Break and place blocks, interact with blocks/entities
 - Check your inventory, equip items, craft (give yourself) items
@@ -70,7 +71,7 @@ You MUST respond with a valid JSON object containing these fields:
 
 == AVAILABLE ACTIONS ==
 - move_to: {{"x": number, "y": number, "z": number}} — instant teleport to coords
-- walk_to: {{"x": number, "z": number, "y": number (optional)}} — walk step-by-step to coords (human-like, avoids hazards, max ~50 blocks)
+- walk_to: {{\"x\": number, \"z\": number, \"y\": number (optional)}} — **DEFAULT movement**. Walk step-by-step to coords (human-like, collision-checked, avoids hazards, auto-steps over slabs/stairs, max ~50 blocks). Prefer this over teleport for nearby destinations.
 - move_forward: {{"steps": number}} — walk forward in small steps with collision detection
 - move_back: {{"steps": number}} — walk backward with collision detection
 - turn_left: {{}} — turn 15° left (gradual rotation)
@@ -168,6 +169,7 @@ def format_state(state: dict) -> str:
     if inv_list and isinstance(inv_list, list):
         # Group by item name for a compact summary
         from collections import Counter
+
         counts: Counter = Counter()
         for slot in inv_list:
             if isinstance(slot, dict):
@@ -214,6 +216,20 @@ GOAL_DECOMPOSE_PROMPT = """You are a Minecraft task planner.  Decompose the foll
 a list of concrete sub-goals that an AI agent can execute step by step.
 
 Goal: {goal}
+
+CRITICAL RULES — Do NOT violate these:
+1. Only use information explicitly stated in the goal.  Do NOT invent or
+   infer coordinates, locations, entities, or targets that are not
+   mentioned in the goal description.
+2. If the goal is about communication (chatting, describing, reporting),
+   the sub-goals should focus on observing and communicating — NOT on
+   teleporting or moving to arbitrary locations.
+3. If the goal asks the agent to "send your coordinates", that means
+   read and report the agent's OWN current position — NOT go somewhere
+   else or teleport to a coordinate.
+4. If the goal says "just one turn", respect that — the agent should be
+   able to complete the objective in a single action, not a multi-step
+   plan.
 
 Return a JSON array of objects, each with:
   "step": number,

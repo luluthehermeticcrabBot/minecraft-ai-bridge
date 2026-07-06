@@ -41,7 +41,7 @@ class InventoryManager:
 
     async def refresh(self) -> None:
         """Fetch and parse the current inventory from the server."""
-        from ..minecraft.actions import ActionType, ActionResult, execute_action
+        from ..minecraft.actions import ActionResult, ActionType, execute_action
 
         result = await execute_action(self._mc, ActionType.CHECK_INVENTORY)
         if result.success:
@@ -58,6 +58,7 @@ class InventoryManager:
         Reuses the same parser from the observer module.
         """
         from ..minecraft.observer import _parse_inventory_nbt
+
         return _parse_inventory_nbt(raw)
 
     # ── Query helpers ────────────────────────────────────────────────
@@ -82,10 +83,7 @@ class InventoryManager:
     def get_item_slots(self, item_id: str) -> list:
         """Return all inventory slots containing *item_id*."""
         clean_id = item_id.removeprefix("minecraft:")
-        return [
-            slot for slot in self._items
-            if slot.item_id.removeprefix("minecraft:") == clean_id
-        ]
+        return [slot for slot in self._items if slot.item_id.removeprefix("minecraft:") == clean_id]
 
     def get_hotbar(self) -> list:
         """Return slots in the hotbar (slots 0-8)."""
@@ -115,7 +113,9 @@ class InventoryManager:
 
         counts: Counter = Counter()
         for slot in self._items:
-            name = getattr(slot, "display_name", slot.item_id.replace("minecraft:", "").replace("_", " "))
+            name = getattr(
+                slot, "display_name", slot.item_id.replace("minecraft:", "").replace("_", " ")
+            )
             counts[name] += slot.count
 
         items_str = ", ".join(f"{k}x{v}" for k, v in sorted(counts.items()))

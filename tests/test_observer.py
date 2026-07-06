@@ -6,12 +6,12 @@ import pytest
 
 from minecraft_ai_bridge.minecraft.observer import (
     InventorySlot,
+    _parse_inventory_nbt,
     _parse_nbt_list,
     _parse_nbt_value,
-    _parse_inventory_nbt,
 )
 
-pytestmark = pytest.mark.asyncio
+# No global asyncio marker — the async tests in TestObserver are individually marked
 
 
 class TestObserver:
@@ -19,6 +19,7 @@ class TestObserver:
 
     async def test_observe_position(self, mock_mc):
         from minecraft_ai_bridge.minecraft.observer import Observer
+
         mock_mc.set_position(42.0, 70.0, 100.0)
         obs = Observer(mock_mc)
         state = await obs.observe()
@@ -26,10 +27,13 @@ class TestObserver:
 
     async def test_observe_inventory(self, mock_mc):
         from minecraft_ai_bridge.minecraft.observer import Observer
-        mock_mc.set_inventory([
-            {"item_id": "dirt", "count": 64, "slot": 0},
-            {"item_id": "stone", "count": 32, "slot": 1},
-        ])
+
+        mock_mc.set_inventory(
+            [
+                {"item_id": "dirt", "count": 64, "slot": 0},
+                {"item_id": "stone", "count": 32, "slot": 1},
+            ]
+        )
         obs = Observer(mock_mc)
         state = await obs.observe()
         assert len(state.inventory) >= 2
@@ -38,6 +42,7 @@ class TestObserver:
 
     async def test_observe_health(self, mock_mc):
         from minecraft_ai_bridge.minecraft.observer import Observer
+
         mock_mc.set_player_nbt("Health", 15.0)
         obs = Observer(mock_mc)
         state = await obs.observe()
@@ -46,12 +51,14 @@ class TestObserver:
 
     async def test_observe_health_fallback(self, mock_mc):
         from minecraft_ai_bridge.minecraft.observer import Observer
+
         obs = Observer(mock_mc)
         state = await obs.observe()
         assert state.health is not None
 
     async def test_observe_players(self, mock_mc):
         from minecraft_ai_bridge.minecraft.observer import Observer
+
         mock_mc.set_players(["AIBot", "Player1"])
         obs = Observer(mock_mc)
         state = await obs.observe()
@@ -60,6 +67,7 @@ class TestObserver:
 
     async def test_observe_biome(self, mock_mc):
         from minecraft_ai_bridge.minecraft.observer import Observer
+
         mock_mc.set_position(0.0, 65.0, 0.0)
         mock_mc.set_biome("plains")
         obs = Observer(mock_mc)
@@ -68,6 +76,7 @@ class TestObserver:
 
     async def test_observe_position_only(self, mock_mc):
         from minecraft_ai_bridge.minecraft.observer import Observer
+
         mock_mc.set_position(77.0, 64.0, -50.0)
         obs = Observer(mock_mc)
         pos = await obs.observe_position()
@@ -75,6 +84,7 @@ class TestObserver:
 
     async def test_observe_biome_error(self, mock_mc):
         from minecraft_ai_bridge.minecraft.observer import Observer
+
         mock_mc.set_position(0.0, 65.0, 0.0)
         mock_mc.set_biome(RuntimeError("MCPQ error"))
         obs = Observer(mock_mc)
@@ -159,10 +169,7 @@ class TestParseInventoryNbt:
         assert result[0].slot == 0
 
     def test_parse_multiple_items(self):
-        raw = (
-            '[{id:"minecraft:dirt",Count:64b,Slot:0b},'
-            '{id:"minecraft:stone",Count:32b,Slot:1b}]'
-        )
+        raw = '[{id:"minecraft:dirt",Count:64b,Slot:0b},{id:"minecraft:stone",Count:32b,Slot:1b}]'
         result = _parse_inventory_nbt(raw)
         assert len(result) == 2
         assert result[1].item_id == "minecraft:stone"

@@ -95,21 +95,20 @@ class RCONClient:
                 )
                 await asyncio.wait_for(self._authenticate(), timeout=15)
                 self._connected = True
-                logger.info(
-                    "Connected to %s:%d", self.host, self.port
-                )
+                logger.info("Connected to %s:%d", self.host, self.port)
                 return
             except (OSError, asyncio.TimeoutError) as exc:
                 last_error = exc
                 logger.warning(
                     "Connection attempt %d/%d failed: %s",
-                    attempt, self.reconnect_attempts, exc,
+                    attempt,
+                    self.reconnect_attempts,
+                    exc,
                 )
                 if attempt < self.reconnect_attempts:
                     await asyncio.sleep(self.reconnect_delay)
         raise RCONError(
-            f"Could not connect to {self.host}:{self.port} after "
-            f"{self.reconnect_attempts} attempts"
+            f"Could not connect to {self.host}:{self.port} after {self.reconnect_attempts} attempts"
         ) from last_error
 
     async def disconnect(self) -> None:
@@ -199,9 +198,7 @@ class RCONClient:
             if time_left <= 0:
                 raise asyncio.TimeoutError()
             try:
-                chunk = await asyncio.wait_for(
-                    self._reader.read(remaining), timeout=time_left
-                )
+                chunk = await asyncio.wait_for(self._reader.read(remaining), timeout=time_left)
             except asyncio.TimeoutError:
                 raise
             if not chunk:

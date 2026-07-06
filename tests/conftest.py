@@ -12,10 +12,9 @@ from typing import Any
 import pytest
 import pytest_asyncio
 
-from minecraft_ai_bridge.minecraft.actions import ActionType, ActionResult
+from minecraft_ai_bridge.minecraft.actions import ActionResult, ActionType
 from minecraft_ai_bridge.minecraft.mc_api import McpqClient
 from minecraft_ai_bridge.minecraft.observer import InventorySlot, WorldState
-
 
 # ── Mock MCPQ Client ──────────────────────────────────────────────────────
 
@@ -39,6 +38,7 @@ class MockMcpqClient:
         self._chat_log: list[str] = []  # chat messages sent
         self._player_nbt: dict[str, Any] = {}
         self._next_get_biome: str | Exception = "plains"
+        self._chat_events_backlog: list[Any] = []
 
     # ── Pre-configuration helpers ─────────────────────────────────────
 
@@ -113,9 +113,12 @@ class MockMcpqClient:
             name = "AIBot"
             pos = type("Pos", (), {"x": 0.0, "y": 65.0, "z": 0.0})()
             world = type("World", (), {"name": "world"})()
+
             async def getNbt(self):  # noqa: N802
                 return self._nbt or {}
+
             _nbt = {}
+
         p = MockPlayer()
         p._nbt = self._player_nbt
         return p
@@ -148,25 +151,35 @@ class MockMcpqClient:
     async def run_command(self, command: str) -> None:
         self._command_log.append(command)
 
+    async def run_as_player(self, command: str) -> str:
+        """Substitute ``@p`` with player name, log, and run."""
+        substituted = command.replace("@p", "AIBot")
+        self._command_log.append(substituted)
+        return await self._run_command_blocking(substituted)
+
     async def run_command_blocking(self, command: str) -> str:
         self._command_log.append(command)
-        # Simulate common command responses
+        return await self._run_command_blocking(command)
+
+    async def _run_command_blocking(self, command: str) -> str:
+        """Simulate command responses (called by both run_command_blocking
+        and run_as_player after substitution)."""
         cmd = command.lower().strip()
-        if cmd.startswith("data get entity @p health"):
+        # Match both @p and substituted player-name variants
+        if "health" in cmd and ("entity @p" in cmd or "entity aibot" in cmd):
             if "Health" in self._player_nbt:
                 return f"Health: {self._player_nbt['Health']}d"
             return "Health: 20.0d"
-        if cmd.startswith("data get entity @p inventory"):
+        if "inventory" in cmd and ("entity @p" in cmd or "entity aibot" in cmd):
             if not self._inventory:
                 return "Inventory: []"
             parts = []
             for s in self._inventory:
                 parts.append(f'{{id:"minecraft:{s.item_id}",Count:{s.count}b,Slot:{s.slot}b}}')
             return f"Inventory: [{','.join(parts)}]"
-        if cmd.startswith("data get entity @p"):
+        if "data get entity" in cmd:
             return "{}"
         if cmd.startswith("tp "):
-            # Record teleport command
             return "Teleported"
         if cmd.startswith("time query day"):
             return f"{self._time}"
@@ -174,9 +187,9 @@ class MockMcpqClient:
             return self._weather
         if cmd.startswith("execute positioned"):
             return "Located biome plains at [0, 65, 0]"
-        if cmd.startswith("give @p"):
+        if "give" in cmd and ("aibot" in cmd or "@p" in cmd):
             return f"Gave 1 {cmd.split()[2]} to AIBot"
-        if cmd.startswith("clear @p"):
+        if "clear" in cmd and ("aibot" in cmd or "@p" in cmd):
             return "Cleared items"
         if cmd.startswith("summon item"):
             return "Spawned item entity"
@@ -190,15 +203,28 @@ class MockMcpqClient:
             return "Changed the block"
         if cmd.startswith("item replace"):
             return "Replaced item"
-        if cmd.startswith("attribute @p"):
+        if "attribute" in cmd and ("aibot" in cmd or "@p" in cmd):
             return "20.0"
-        if cmd.startswith("execute as @p at @s run tp"):
+        if "execute" in cmd and "as" in cmd and "tp" in cmd:
             return "Teleported"
-        if cmd.startswith("execute as @p at @s run interact"):
+        if "execute" in cmd and "as" in cmd and "interact" in cmd:
             return "Interacted"
         if cmd.startswith("execute if biome"):
-            return "false"  # biome fallback test returns false by default
+            return "false"
         return "OK"
+
+    async def get_chat_events(self):
+        """Return a list of fake chat events (empty by default).
+
+        Tests can call ``set_chat_events()`` to inject events.
+        """
+        events = list(self._chat_events_backlog)
+        self._chat_events_backlog.clear()
+        return events
+
+    def set_chat_events(self, events: list[Any]) -> None:
+        """Inject chat events for the next ``get_chat_events()`` call."""
+        self._chat_events_backlog.extend(events)
 
     async def post_to_chat(self, message: str) -> None:
         self._chat_log.append(message)
@@ -313,6 +339,7 @@ class MockLLMClient:
     ) -> Any:
         self.prompts_received.append(system_prompt[:100])
         from minecraft_ai_bridge.llm.models import LLMResponse
+
         if self._index >= len(self._responses):
             return LLMResponse(action="done", action_params={}, reasoning="No more responses")
         action, params = self._responses[self._index]

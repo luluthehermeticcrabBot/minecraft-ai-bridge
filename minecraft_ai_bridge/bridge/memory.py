@@ -93,15 +93,11 @@ class AgentMemory:
             return
         try:
             conn = _get_connection(self._db_path)
-            rows = conn.execute(
-                "SELECT fact FROM agent_facts ORDER BY id"
-            ).fetchall()
+            rows = conn.execute("SELECT fact FROM agent_facts ORDER BY id").fetchall()
             for row in rows:
                 self._long_term.append(row["fact"])
             if self._long_term:
-                logger.info(
-                    "Restored %d fact(s) from memory database", len(self._long_term)
-                )
+                logger.info("Restored %d fact(s) from memory database", len(self._long_term))
         except Exception as exc:
             logger.debug("Could not load facts from DB: %s", exc)
 
@@ -119,16 +115,16 @@ class AgentMemory:
         except Exception as exc:
             logger.debug("Could not save fact to DB: %s", exc)
 
-    def save_goal(self, description: str, completed: bool = False,
-                  session_id: str | None = None) -> None:
+    def save_goal(
+        self, description: str, completed: bool = False, session_id: str | None = None
+    ) -> None:
         """Record a goal in the persistent database."""
         if not self._db_path:
             return
         try:
             conn = _get_connection(self._db_path)
             conn.execute(
-                "INSERT INTO agent_goals (description, completed, session_id) "
-                "VALUES (?, ?, ?)",
+                "INSERT INTO agent_goals (description, completed, session_id) VALUES (?, ?, ?)",
                 (description, int(completed), session_id or ""),
             )
             conn.commit()
@@ -211,17 +207,13 @@ class AgentMemory:
         """Get recent entries as LLM conversation messages."""
         n = n or self._window
         entries = list(self._short_term)[-n:]
-        return [
-            Message(role=e.role, content=e.summary) for e in entries
-        ]
+        return [Message(role=e.role, content=e.summary) for e in entries]
 
     def notable_facts(self) -> str:
         """Format long-term memory into a string for the prompt."""
         if not self._long_term:
             return ""
-        return "Notable facts:\n" + "\n".join(
-            f"- {fact}" for fact in self._long_term[-10:]
-        )
+        return "Notable facts:\n" + "\n".join(f"- {fact}" for fact in self._long_term[-10:])
 
     def turn_count(self) -> int:
         return self._turn

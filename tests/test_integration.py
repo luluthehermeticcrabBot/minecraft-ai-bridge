@@ -23,6 +23,7 @@ async def _no_sleep(x: float) -> None:
 def _mock_llm(orch, responses):
     """Replace orch._llm with a MockLLMClient and sync GoalManager."""
     from tests.conftest import MockLLMClient
+
     mock = MockLLMClient(responses=responses)
     orch._llm = mock
     orch._goals._llm = mock
@@ -65,9 +66,7 @@ def position_reached(
     Parses ``Position: (x, y, z)`` from ``MemoryEntry.summary`` strings
     produced by ``format_state()``.
     """
-    pos_pattern = re.compile(
-        r"Position:\s*\(([\d.\-]+),\s*([\d.\-]+),\s*([\d.\-]+)\)"
-    )
+    pos_pattern = re.compile(r"Position:\s*\(([\d.\-]+),\s*([\d.\-]+),\s*([\d.\-]+)\)")
     for entry in orch._memory._short_term:
         if entry.role != Role.USER:
             continue
@@ -75,7 +74,9 @@ def position_reached(
         if not m:
             continue
         x, y, z = (
-            float(m.group(1)), float(m.group(2)), float(m.group(3)),
+            float(m.group(1)),
+            float(m.group(2)),
+            float(m.group(3)),
         )
         if (
             abs(x - target_x) <= tolerance
@@ -115,13 +116,13 @@ class TestAgentLoop:
         orch = Orchestrator(cfg)
         orch._cmd_handler = None  # skip chat commands
         import asyncio
+
         with pytest.MonkeyPatch.context() as mp:
             mp.setattr(asyncio, "sleep", _no_sleep)  # skip delays
             await orch.run()
         # Approach A: the agent must have decided to teleport or move toward the target
         assert action_taken(orch, "teleport", "move_to", "walk_to"), (
-            f"Agent should have teleported/moved toward target. "
-            f"Actions seen: {actions_taken(orch)}"
+            f"Agent should have teleported/moved toward target. Actions seen: {actions_taken(orch)}"
         )
         # Approach B (position readback via observation summaries):
         # NOTE: MCPQ's player.teleport(Vec3) returns success without moving the
@@ -137,12 +138,12 @@ class TestAgentLoop:
         orch = Orchestrator(cfg)
         orch._cmd_handler = None
         import asyncio
+
         with pytest.MonkeyPatch.context() as mp:
             mp.setattr(asyncio, "sleep", _no_sleep)
             await orch.run()
         assert len(actions_taken(orch)) > 0, (
-            f"Agent should have taken at least one action. "
-            f"Actions seen: {actions_taken(orch)}"
+            f"Agent should have taken at least one action. Actions seen: {actions_taken(orch)}"
         )
         assert orch._turn > 0
 
@@ -152,13 +153,12 @@ class TestAgentLoop:
         orch = Orchestrator(cfg)
         orch._cmd_handler = None
         import asyncio
+
         with pytest.MonkeyPatch.context() as mp:
             mp.setattr(asyncio, "sleep", _no_sleep)
             await orch.run()
         # The agent should still have taken some actions before disconnect
-        assert len(actions_taken(orch)) > 0, (
-            "Agent should have taken action(s) before disconnect."
-        )
+        assert len(actions_taken(orch)) > 0, "Agent should have taken action(s) before disconnect."
 
 
 @pytest.mark.asyncio
@@ -169,11 +169,15 @@ class TestFallbackBehavior:
         """When LLM returns empty sub-goals, fallback should be used."""
         cfg = make_config(goal="Mine for diamonds")
         orch = Orchestrator(cfg)
-        _mock_llm(orch, [
-            ("done", {"message": "done"}),
-        ])
+        _mock_llm(
+            orch,
+            [
+                ("done", {"message": "done"}),
+            ],
+        )
         orch._cmd_handler = None
         import asyncio
+
         with pytest.MonkeyPatch.context() as mp:
             mp.setattr(asyncio, "sleep", _no_sleep)
             await orch.run()
@@ -194,6 +198,7 @@ class TestStuckDetection:
         _mock_llm(orch, failing_actions)
         orch._cmd_handler = None
         import asyncio
+
         with pytest.MonkeyPatch.context() as mp:
             mp.setattr(asyncio, "sleep", _no_sleep)
             await orch.run()
@@ -209,12 +214,16 @@ class TestStuckDetection:
         """A successful action should reset the failure counter."""
         cfg = make_config(goal="Explore")
         orch = Orchestrator(cfg)
-        _mock_llm(orch, [
-            ("scan", {}),
-            ("done", {"message": "done"}),
-        ])
+        _mock_llm(
+            orch,
+            [
+                ("scan", {}),
+                ("done", {"message": "done"}),
+            ],
+        )
         orch._cmd_handler = None
         import asyncio
+
         with pytest.MonkeyPatch.context() as mp:
             mp.setattr(asyncio, "sleep", _no_sleep)
             await orch.run()
@@ -235,14 +244,13 @@ class TestHazardResponse:
         orch = Orchestrator(cfg)
         orch._cmd_handler = None
         import asyncio
+
         with pytest.MonkeyPatch.context() as mp:
             mp.setattr(asyncio, "sleep", _no_sleep)
             await orch.run()
         # Must have observation entries (Role.USER) and action entries (Role.ASSISTANT)
         assert len(orch._memory._short_term) > 0
-        assert len(actions_taken(orch)) > 0, (
-            "Agent should have taken actions that were recorded"
-        )
+        assert len(actions_taken(orch)) > 0, "Agent should have taken actions that were recorded"
 
     async def test_memory_remembers_facts(self):
         """Notable facts should be stored in long-term memory."""
@@ -250,6 +258,7 @@ class TestHazardResponse:
         orch = Orchestrator(cfg)
         orch._cmd_handler = None
         import asyncio
+
         with pytest.MonkeyPatch.context() as mp:
             mp.setattr(asyncio, "sleep", _no_sleep)
             await orch.run()
@@ -265,12 +274,14 @@ class TestStructureRespect:
 
     def test_system_prompt_contains_rules(self):
         from minecraft_ai_bridge.llm.prompts import SYSTEM_PROMPT
+
         assert "RESPECT EXISTING STRUCTURES" in SYSTEM_PROMPT
         assert "AVOID VILLAGES" in SYSTEM_PROMPT
         assert "PRESERVE INFRASTRUCTURE" in SYSTEM_PROMPT
 
     def test_action_tool_has_all_actions(self):
         from minecraft_ai_bridge.llm.client import ACTION_TOOL
+
         enum = ACTION_TOOL["function"]["parameters"]["properties"]["action"]["enum"]
         # Should include walk_to
         assert "walk_to" in enum
@@ -287,6 +298,7 @@ class TestChatCommandsIntegration:
         orch._cmd_handler = None
         orch._stop_requested = True
         import asyncio
+
         with pytest.MonkeyPatch.context() as mp:
             mp.setattr(asyncio, "sleep", _no_sleep)
             await orch.run()
@@ -306,12 +318,11 @@ class TestInventoryIntegration:
         orch = Orchestrator(cfg)
         orch._cmd_handler = None
         import asyncio
+
         with pytest.MonkeyPatch.context() as mp:
             mp.setattr(asyncio, "sleep", _no_sleep)
             await orch.run()
         # Inventory manager should have been created during connect
         assert orch._inventory is not None
         # The agent should have taken at least one action
-        assert len(actions_taken(orch)) > 0, (
-            "Agent should have acted after connecting"
-        )
+        assert len(actions_taken(orch)) > 0, "Agent should have acted after connecting"

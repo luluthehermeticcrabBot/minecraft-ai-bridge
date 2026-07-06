@@ -5,21 +5,22 @@ from __future__ import annotations
 import pytest
 
 from minecraft_ai_bridge.minecraft.actions import (
-    ActionType,
     ActionResult,
+    ActionType,
+    _can_move_to,
     _check_health,
     _cmd,
     _damage_hit_anything,
     _drop_item,
-    _is_passable,
-    _is_hazard,
     _is_artificial,
-    _can_move_to,
+    _is_hazard,
+    _is_passable,
     _walk_toward,
     execute_action,
 )
 
-pytestmark = pytest.mark.asyncio
+# Only async TestActionHandlers tests are individually marked with @pytest.mark.asyncio
+
 
 
 # ── execute_action dispatch ──────────────────────────────────────────────
@@ -57,35 +58,102 @@ class TestMovement:
         assert mock_mc._pos == (100.0, 65.0, 200.0)
 
     async def test_move_forward(self, mock_mc):
+        mock_mc.set_position(0.5, 65.0, 0.5)
         result = await execute_action(mock_mc, ActionType.MOVE_FORWARD, {"steps": 2})
         assert result.success is True
         assert "forward" in result.message.lower()
+        # Verify execute-based command was used (not bare /tp)
+        # Note: @p gets substituted by run_as_player to the player name
+        mock_mc.assert_command_contains("execute as AIBot at @s run tp @s ^ ^ ^0.5")
+
+    async def test_move_forward_blocked(self, mock_mc):
+        """Move forward should fail when a solid block is in the way."""
+        mock_mc.set_position(0.5, 65.0, 0.5)
+        # Place a stone block at head level where we'd move
+        mock_mc.set_block("stone", 0, 66, 0)
+        mock_mc.set_block("stone", 0, 65, 0)
+        result = await execute_action(mock_mc, ActionType.MOVE_FORWARD, {"steps": 2})
+        assert result.success is False
+        assert "blocked" in result.message.lower() or "Blocked" in result.message
+
+    async def test_move_forward_hazard(self, mock_mc):
+        """Move forward should stop before a hazard."""
+        mock_mc.set_position(0.5, 65.0, 0.5)
+        # Place lava at feet level (y=64 is where feet would be)
+        mock_mc.set_block("lava", 0, 64, 0)
+        result = await execute_action(mock_mc, ActionType.MOVE_FORWARD, {"steps": 2})
+        assert result.success is False
+        assert "hazard" in result.message.lower()
+
+    async def test_move_forward_auto_step(self, mock_mc):
+        """Move forward should auto-step over a single-block obstacle (e.g. slab)."""
+        mock_mc.set_position(0.5, 65.0, 0.5)
+        # Place a slab at feet level (passable but ground level) — actually slabs ARE passable in _is_passable
+        # Let's use a stone block at feet level but air at head level +1 to test auto-step
+        # The stone is at the same level as feet, so we need the one-above check
+        mock_mc.set_block("stone", 0, 65, 0)  # Feet level — blocked
+        mock_mc.set_block("air", 0, 66, 0)    # Head level — passable
+        mock_mc.set_block("air", 0, 67, 0)    # Head + 1 — passable for auto-step
+        result = await execute_action(mock_mc, ActionType.MOVE_FORWARD, {"steps": 1})
+        # Should auto-step since head+1 is passable
+        assert result.success is True
 
     async def test_move_back(self, mock_mc):
+        mock_mc.set_position(0.5, 65.0, 0.5)
         result = await execute_action(mock_mc, ActionType.MOVE_BACK, {"steps": 2})
         assert result.success is True
         assert "back" in result.message.lower()
+        # Verify execute-based command was used
+        mock_mc.assert_command_contains("execute as @p at @s run tp @s ^ ^ ^-0.5")
+
+    async def test_move_back_blocked(self, mock_mc):
+        """Move back should fail when a solid block is behind."""
+        mock_mc.set_position(0.5, 65.0, 0.5)
+        mock_mc.set_block("stone", 0, 66, 0)
+        mock_mc.set_block("stone", 0, 65, 0)
+        result = await execute_action(mock_mc, ActionType.MOVE_BACK, {"steps": 2})
+        assert result.success is False
+        assert "blocked" in result.message.lower() or "Blocked" in result.message
 
     async def test_turn_left(self, mock_mc):
         result = await execute_action(mock_mc, ActionType.TURN_LEFT, {})
         assert result.success is True
         assert "left" in result.message.lower()
-        mock_mc.assert_command_contains("~-15")
+        # Verify execute-based rotation command
+        mock_mc.assert_command_contains("execute as @p at @s run tp @s ~ ~ ~ ~-15 ~")
 
     async def test_turn_right(self, mock_mc):
         result = await execute_action(mock_mc, ActionType.TURN_RIGHT, {})
         assert result.success is True
         assert "right" in result.message.lower()
-        mock_mc.assert_command_contains("~15")
+        # Verify execute-based rotation command
+        mock_mc.assert_command_contains("execute as @p at @s run tp @s ~ ~ ~ ~15 ~")
 
     async def test_jump(self, mock_mc):
         result = await execute_action(mock_mc, ActionType.JUMP, {})
         assert result.success is True
+        # Verify execute-based jump command
+        mock_mc.assert_command_contains("execute as @p at @s run tp @s ~ ~1 ~")
 
     async def test_teleport(self, mock_mc):
         result = await execute_action(mock_mc, ActionType.TELEPORT, {"x": 50, "y": 70, "z": 100})
         assert result.success is True
         assert mock_mc._pos == (50.0, 70.0, 100.0)
+
+    async def test_walk_to_nearby(self, mock_mc):
+        """walk_to should walk step-by-step for short distances."""
+        mock_mc.set_position(10.0, 65.0, 10.0)
+        result = await execute_action(mock_mc, ActionType.WALK_TO, {"x": 12, "z": 12})
+        assert result.success is True
+        # Should have used execute facing to orient
+        mock_mc.assert_command_contains("execute as @p at @s facing")
+
+    async def test_walk_to_far(self, mock_mc):
+        """walk_to should teleport for distances > 50 blocks."""
+        mock_mc.set_position(10.0, 65.0, 10.0)
+        result = await execute_action(mock_mc, ActionType.WALK_TO, {"x": 100, "z": 100})
+        assert result.success is True
+        assert "teleported" in result.message.lower()
 
 
 # ── Interaction actions ──────────────────────────────────────────────────
@@ -94,9 +162,7 @@ class TestMovement:
 class TestInteraction:
     async def test_break_block_with_coords(self, mock_mc):
         await mock_mc.set_block("stone", 10, 64, 20)
-        result = await execute_action(
-            mock_mc, ActionType.BREAK_BLOCK, {"x": 10, "y": 64, "z": 20}
-        )
+        result = await execute_action(mock_mc, ActionType.BREAK_BLOCK, {"x": 10, "y": 64, "z": 20})
         assert result.success is True
         assert await mock_mc.get_block(10, 64, 20) == "air"
 
@@ -127,10 +193,12 @@ class TestInteraction:
 
 class TestInventory:
     async def test_check_inventory(self, mock_mc):
-        mock_mc.set_inventory([
-            {"item_id": "dirt", "count": 64, "slot": 0},
-            {"item_id": "stone", "count": 32, "slot": 1},
-        ])
+        mock_mc.set_inventory(
+            [
+                {"item_id": "dirt", "count": 64, "slot": 0},
+                {"item_id": "stone", "count": 32, "slot": 1},
+            ]
+        )
         result = await execute_action(mock_mc, ActionType.CHECK_INVENTORY, {})
         assert result.success is True
         assert "inventory" in result.message.lower()
@@ -155,14 +223,14 @@ class TestInventory:
 
     async def test_craft_item_failure(self, mock_mc):
         """Test error handling when /give fails."""
-        original_run = mock_mc.run_command_blocking
+        original_run = mock_mc.run_as_player
 
         async def fail_give(command: str) -> str:
-            if command.startswith("give @p"):
+            if "give" in command:
                 raise RuntimeError("Cannot give items in survival")
             return await original_run(command)
 
-        mock_mc.run_command_blocking = fail_give  # type: ignore[assignment]
+        mock_mc.run_as_player = fail_give  # type: ignore[assignment]
         result = await execute_action(
             mock_mc, ActionType.CRAFT_ITEM, {"item_type": "diamond", "amount": 1}
         )
@@ -278,7 +346,8 @@ class TestMeta:
 
 
 class TestHelpers:
-    def test_is_passable(self):
+    @pytest.mark.asyncio
+    async def test_is_passable(self):
         assert _is_passable("air") is True
         assert _is_passable("water") is True
         assert _is_passable("stone") is False
@@ -287,7 +356,8 @@ class TestHelpers:
         assert _is_passable("tall_grass") is True
         assert _is_passable("torch") is True
 
-    def test_is_hazard(self):
+    @pytest.mark.asyncio
+    async def test_is_hazard(self):
         assert _is_hazard("lava") is True
         assert _is_hazard("cactus") is True
         assert _is_hazard("fire") is True
@@ -295,7 +365,8 @@ class TestHelpers:
         assert _is_hazard("magma_block") is True
         assert _is_hazard("air") is False
 
-    def test_is_artificial(self):
+    @pytest.mark.asyncio
+    async def test_is_artificial(self):
         assert _is_artificial("oak_planks") is True
         assert _is_artificial("glass") is True
         assert _is_artificial("stone_bricks") is True
