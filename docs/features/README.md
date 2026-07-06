@@ -12,7 +12,7 @@ This directory contains detailed proposals for new features. Each feature has it
 | **P1** | N4 | **Chat Command Interface** — human-in-the-loop control via in-game chat | 4-6h |
 | **P1** | N3 | **Persistent Memory Database** — SQLite-backed cross-session memory | 4h |
 | **P2** | N1 | **Structured Inventory Manager** — parsed inventory with tools/durability tracking | 4-6h |
-| **P2** | N2 | **WASD Movement System** — human-like walking movement (not /tp) | 3-5 days |
+| **P2** | N2 | **WASD Movement System** — human-like walking movement (not /tp) | ✅ **Done (v0.5.0)** |
 | **P2** | N5 | **Visual Perception** — screenshots + vision LLM for world understanding | 1-2 days |
 | **P3** | N6 | **Blueprint System** — pre-defined building plans | 3-5 days |
 | **P3** | N7 | **Redstone Engineering** — redstone component placement & circuits | 5-7 days |

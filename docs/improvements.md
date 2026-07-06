@@ -28,9 +28,9 @@ P3 ─ Low      ─ Nice-to-have
 | I6 | **Error loop protection** — consecutive failures → graceful shutdown | 30m | ✅ Done — failure counter + backoff |
 | I7 | **Better type annotations** — `Handler = callable` → proper type | 15m | ✅ Done — `Callable[..., Awaitable[ActionResult]]` |
 | I8 | **RCON deprecation** — mark as deprecated in docs | 15m | ✅ Done — header comment and doc note |
-| I9 | **Pre-commit hooks** — ruff + mypy pre-commit config | 1h | Pending |
+| I9 | **Pre-commit hooks** — ruff + mypy pre-commit config | 1h | ✅ Done |
 | I10 | **GitHub Actions CI** — lint + type check + test workflow | 2h | Pending |
-| I11 | **Ollama compatibility** — graceful fallback for JSON mode | 1h | Pending |
+| | I11 | **Ollama compatibility** — graceful fallback for JSON mode | 1h | ✅ Done |
 | I12 | **Configurable botsummon retry** — polling loop | 30m | ✅ Done — 10-attempt polling at 1s intervals |
 | I13 | **Memory deduplication** — skip unchanged observations | 30m | ✅ Done — summary comparison in `record_observation()` |
 

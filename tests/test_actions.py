@@ -108,8 +108,8 @@ class TestMovement:
         result = await execute_action(mock_mc, ActionType.MOVE_BACK, {"steps": 2})
         assert result.success is True
         assert "back" in result.message.lower()
-        # Verify execute-based command was used
-        mock_mc.assert_command_contains("execute as @p at @s run tp @s ^ ^ ^-0.5")
+        # Verify execute-based command was used (note: @p gets substituted)
+        mock_mc.assert_command_contains("execute as AIBot at @s run tp @s ^ ^ ^-0.5")
 
     async def test_move_back_blocked(self, mock_mc):
         """Move back should fail when a solid block is behind."""
@@ -125,20 +125,20 @@ class TestMovement:
         assert result.success is True
         assert "left" in result.message.lower()
         # Verify execute-based rotation command
-        mock_mc.assert_command_contains("execute as @p at @s run tp @s ~ ~ ~ ~-15 ~")
+        mock_mc.assert_command_contains("execute as AIBot at @s run tp @s ~ ~ ~ ~-15 ~")
 
     async def test_turn_right(self, mock_mc):
         result = await execute_action(mock_mc, ActionType.TURN_RIGHT, {})
         assert result.success is True
         assert "right" in result.message.lower()
         # Verify execute-based rotation command
-        mock_mc.assert_command_contains("execute as @p at @s run tp @s ~ ~ ~ ~15 ~")
+        mock_mc.assert_command_contains("execute as AIBot at @s run tp @s ~ ~ ~ ~15 ~")
 
     async def test_jump(self, mock_mc):
         result = await execute_action(mock_mc, ActionType.JUMP, {})
         assert result.success is True
         # Verify execute-based jump command
-        mock_mc.assert_command_contains("execute as @p at @s run tp @s ~ ~1 ~")
+        mock_mc.assert_command_contains("execute as AIBot at @s run tp @s ~ ~1 ~")
 
     async def test_teleport(self, mock_mc):
         result = await execute_action(mock_mc, ActionType.TELEPORT, {"x": 50, "y": 70, "z": 100})
@@ -151,7 +151,7 @@ class TestMovement:
         result = await execute_action(mock_mc, ActionType.WALK_TO, {"x": 12, "z": 12})
         assert result.success is True
         # Should have used execute facing to orient
-        mock_mc.assert_command_contains("execute as @p at @s facing")
+        mock_mc.assert_command_contains("execute as AIBot at @s facing")
 
     async def test_walk_to_far(self, mock_mc):
         """walk_to should teleport for distances > 50 blocks."""

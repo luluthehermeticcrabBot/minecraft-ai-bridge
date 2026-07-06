@@ -469,20 +469,31 @@ async def _move_forward(mc: McpqClient, params: dict) -> ActionResult:
         # Check collision at feet level one step forward
         ok, reason = await _can_move_to(mc, front_x, front_y, front_z)
         if not ok:
-            # Auto-step: try one block up (slabs, stairs, carpets)
-            ok_up, _ = await _can_move_to(mc, front_x, front_y + 1, front_z)
-            if ok_up:
-                # Step up: move forward first, then up
-                await _cmd(
-                    mc,
-                    f"execute as @p at @s run tp @s ^ ^ ^{step_size}",
-                )
-                await _cmd(
-                    mc,
-                    f"execute as @p at @s run tp @s ~ ~1 ~",
-                )
-                actual_steps += 1
-                continue
+            # Auto-step: try one block up ONLY if the issue is a solid block,
+            # not a hazard (don't auto-step into hazards)
+            is_hazard_block = False
+            try:
+                feet_block = await mc.get_block(front_x, front_y, front_z)
+                below_block = await mc.get_block(front_x, front_y - 1, front_z)
+                if _is_hazard(feet_block) or _is_hazard(below_block):
+                    is_hazard_block = True
+            except Exception:
+                pass
+
+            if not is_hazard_block:
+                ok_up, _ = await _can_move_to(mc, front_x, front_y + 1, front_z)
+                if ok_up:
+                    # Step up: move forward first, then up
+                    await _cmd(
+                        mc,
+                        f"execute as @p at @s run tp @s ^ ^ ^{step_size}",
+                    )
+                    await _cmd(
+                        mc,
+                        f"execute as @p at @s run tp @s ~ ~1 ~",
+                    )
+                    actual_steps += 1
+                    continue
 
             return ActionResult(
                 success=False,
