@@ -1,10 +1,30 @@
 # WASD-Style Human-Like Movement
 
-**Status:** Implemented ✅  
-**Priority:** High  
-**Dependencies:** Scanner, coordinate awareness, MCPQ execute-command  
+**Status:** ✅ **Implemented** (v0.5.0)
+**Priority:** High
+**Dependencies:** Scanner, coordinate awareness, MCPQ execute-command
 
-## Goal
+## Summary
+
+WASD-style movement has been implemented. Movement now uses `/execute`-based entity
+movement with collision detection, hazard avoidance, and auto-step-over for obstacles.
+The agent can walk step-by-step to targets using `walk_to`, and all movement actions
+(`move_forward`, `move_back`, `turn_left`, `turn_right`, `jump`) use physics-based
+stepping instead of raw `/tp` teleport.
+
+### What Changed
+- `walk_to` action uses `_walk_toward()` — step-by-step `/execute facing` + `/tp ^ ^ ^0.5`
+- `move_forward`/`move_back` check collision before each step, auto-step up for obstacles
+- `turn_left`/`turn_right` use 15° gradual rotation (not 90°)
+- Collision detection (`_can_move_to()`) checks head/feet/hazard blocks
+- `_is_passable()`, `_is_hazard()`, `_is_artificial()` helpers for block classification
+- The system prompt recommends `walk_to` for short-to-medium distances, `move_to`/`teleport` for long-range
+
+### Known Limitations
+- Still uses `/tp` commands under the hood (via `/execute`), not raw WASD input simulation
+- No fall damage or hunger cost (works in creative mode)
+- Pathfinding is greedy (step toward target) — no A* for complex terrain yet
+- Movement in survival mode needs further testing
 
 Replace the instant-teleport movement (`/tp @p`) with step-by-step human-like movement using `/execute`-based entity commands, enabling survival-mode compatibility and natural interaction with the world.
 

@@ -69,9 +69,11 @@ class TestMovement:
     async def test_move_forward_blocked(self, mock_mc):
         """Move forward should fail when a solid block is in the way."""
         mock_mc.set_position(0.5, 65.0, 0.5)
-        # Place a stone block at head level where we'd move
-        mock_mc.set_block("stone", 0, 66, 0)
-        mock_mc.set_block("stone", 0, 65, 0)
+        # The _can_move_to check uses (int(px), int(py+0.5), int(pz))
+        # So place a wall above feet level (y=66 for head check) and at feet level (y=65)
+        # at the current position — the check happens before moving
+        await mock_mc.set_block("stone", 0, 65, 0)  # Feet level
+        await mock_mc.set_block("stone", 0, 66, 0)  # Head level — blocked
         result = await execute_action(mock_mc, ActionType.MOVE_FORWARD, {"steps": 2})
         assert result.success is False
         assert "blocked" in result.message.lower() or "Blocked" in result.message
@@ -79,8 +81,10 @@ class TestMovement:
     async def test_move_forward_hazard(self, mock_mc):
         """Move forward should stop before a hazard."""
         mock_mc.set_position(0.5, 65.0, 0.5)
-        # Place lava at feet level (y=64 is where feet would be)
-        mock_mc.set_block("lava", 0, 64, 0)
+        # The hazard check uses mc.get_block(front_x, front_y - 1, front_z)
+        # where front_y = int(py + 0.5) = int(65.0 + 0.5) = 65
+        # so it checks (0, 64, 0)
+        await mock_mc.set_block("lava", 0, 64, 0)  # Below feet — hazard check
         result = await execute_action(mock_mc, ActionType.MOVE_FORWARD, {"steps": 2})
         assert result.success is False
         assert "hazard" in result.message.lower()
@@ -88,12 +92,13 @@ class TestMovement:
     async def test_move_forward_auto_step(self, mock_mc):
         """Move forward should auto-step over a single-block obstacle (e.g. slab)."""
         mock_mc.set_position(0.5, 65.0, 0.5)
-        # Place a slab at feet level (passable but ground level) — actually slabs ARE passable in _is_passable
-        # Let's use a stone block at feet level but air at head level +1 to test auto-step
-        # The stone is at the same level as feet, so we need the one-above check
-        mock_mc.set_block("stone", 0, 65, 0)  # Feet level — blocked
-        mock_mc.set_block("air", 0, 66, 0)    # Head level — passable
-        mock_mc.set_block("air", 0, 67, 0)    # Head + 1 — passable for auto-step
+        # Block at feet level (y=65) but passable at y+1 (y=66) above
+        # _can_move_to checks (0, 66, 0) for head —> air → passable head
+        # and (0, 65, 0) for feet —> stone → blocked
+        # So it tries (0, 66, 0) one level up — air at (0, 66, 0) and air at (0, 67, 0)
+        await mock_mc.set_block("stone", 0, 65, 0)  # Feet level — blocked
+        await mock_mc.set_block("air", 0, 66, 0)    # Head level — passable
+        await mock_mc.set_block("air", 0, 67, 0)    # Head + 1 — passable for auto-step
         result = await execute_action(mock_mc, ActionType.MOVE_FORWARD, {"steps": 1})
         # Should auto-step since head+1 is passable
         assert result.success is True
@@ -109,8 +114,8 @@ class TestMovement:
     async def test_move_back_blocked(self, mock_mc):
         """Move back should fail when a solid block is behind."""
         mock_mc.set_position(0.5, 65.0, 0.5)
-        mock_mc.set_block("stone", 0, 66, 0)
-        mock_mc.set_block("stone", 0, 65, 0)
+        await mock_mc.set_block("stone", 0, 65, 0)
+        await mock_mc.set_block("stone", 0, 66, 0)
         result = await execute_action(mock_mc, ActionType.MOVE_BACK, {"steps": 2})
         assert result.success is False
         assert "blocked" in result.message.lower() or "Blocked" in result.message

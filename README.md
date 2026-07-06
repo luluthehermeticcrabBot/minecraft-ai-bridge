@@ -1,5 +1,10 @@
 # Minecraft AI Bridge
 
+[![CI](https://github.com/luluthehermeticcrabBot/minecraft-ai-bridge/actions/workflows/ci.yml/badge.svg)](https://github.com/luluthehermeticcrabBot/minecraft-ai-bridge/actions/workflows/ci.yml)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![PyPI](https://img.shields.io/badge/PyPI-coming%20soon-orange)](https://pypi.org/)
+
 > An LLM-powered agent that connects to a Paper Minecraft server via the MCPQ plugin and executes goals by observing the world, reasoning with an LLM, and manipulating the world directly — no game client needed.
 
 ## Purpose
@@ -361,6 +366,7 @@ minecraft-ai-bridge/
 | **WASD Movement** | `docs/features/wasd-movement.md` | Human-like walking movement (P2) |
 | **Survival Mode** | `docs/features/survival-mode.md` | Hunting, defense, full survival (P3) |
 | **OpenCode Skill** | `docs/features/opencode-skill.md` | OpenCode/Hermes integration (exploratory) |
+| **CI/CD** | `.github/workflows/ci.yml` | GitHub Actions: lint, test, style checks |
 | **Agent Diary** | `docs/agent-diary/` | Development decisions and progress log |
 
 ### Known Limitations
@@ -371,6 +377,26 @@ minecraft-ai-bridge/
 - **Inventory**: Raw NBT is shown to the LLM as the primary view. The structured `InventoryManager` is available for programmatic access but the LLM prompt currently includes both structured and raw formats.
 - **Biomes**: The agent has no biome awareness — it cannot tell a forest from a desert.
 - **Combat**: Basic `/damage`-based attack only. Mob-specific strategies, armor, and weapons are not implemented.
+
+## CI/CD
+
+The project uses **GitHub Actions** for continuous integration. Every push and pull request to `master`/`main` triggers:
+
+| Job | What it checks |
+|-----|---------------|
+| **lint** | `ruff check` (code quality), `ruff format --check` (formatting), `mypy` (type hints) |
+| **test** | Full `pytest` suite with `--timeout=30` |
+| **style** | `ruff check --select I` (import sorting) |
+
+The CI badge at the top of this README shows the current status of the `master` branch.
+
+### PyPI (Future)
+
+A PyPI release workflow will be added once the project stabilizes. The goal is to publish via `pypi-publish` on tagged commits. For now, install from source:
+
+```bash
+pip install -e "."
+```
 
 ## Testing
 
