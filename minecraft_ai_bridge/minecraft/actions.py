@@ -24,7 +24,7 @@ class ActionType(str, Enum):
     MOVE_TO = "move_to"
     MOVE_FORWARD = "move_forward"
     MOVE_BACK = "move_back"
-    WALK_TO = "walk_to"  # human-like step-by-step walking
+    WALK_TO = "walk_to"        # human-like step-by-step walking
     TURN_LEFT = "turn_left"
     TURN_RIGHT = "turn_right"
     JUMP = "jump"
@@ -76,50 +76,21 @@ class ActionResult:
 # structures (should not be built over).
 
 _PASSABLE_BLOCKS: set[str] = {
-    "air",
-    "cave_air",
-    "void_air",
-    "grass",
-    "tall_grass",
-    "fern",
-    "large_fern",
+    "air", "cave_air", "void_air",
+    "grass", "tall_grass", "fern", "large_fern",
     "dead_bush",
-    "water",
-    "flowing_water",
-    "lava",
-    "flowing_lava",  # passable but hazardous!
-    "snow",
-    "vine",
-    "torch",
-    "wall_torch",
-    "soul_torch",
-    "redstone_torch",
-    "redstone_wire",
-    "repeater",
-    "comparator",
-    "lever",
-    "button",
-    "stone_button",
-    "oak_button",
-    "pressure_plate",
-    "stone_pressure_plate",
-    "oak_pressure_plate",
-    "rail",
-    "powered_rail",
-    "detector_rail",
-    "activator_rail",
-    "red_mushroom",
-    "brown_mushroom",
-    "dandelion",
-    "poppy",
-    "blue_orchid",
-    "oxeye_daisy",
-    "cornflower",
-    "lily_of_the_valley",
-    "wheat",
-    "carrots",
-    "potatoes",
-    "beetroots",
+    "water", "flowing_water",
+    "lava", "flowing_lava",  # passable but hazardous!
+    "snow", "vine",
+    "torch", "wall_torch", "soul_torch",
+    "redstone_torch", "redstone_wire", "repeater", "comparator",
+    "lever", "button", "stone_button", "oak_button",
+    "pressure_plate", "stone_pressure_plate", "oak_pressure_plate",
+    "rail", "powered_rail", "detector_rail", "activator_rail",
+    "red_mushroom", "brown_mushroom",
+    "dandelion", "poppy", "blue_orchid", "oxeye_daisy",
+    "cornflower", "lily_of_the_valley",
+    "wheat", "carrots", "potatoes", "beetroots",
     "nether_wart",
     "cobweb",
     "ladder",
@@ -127,14 +98,11 @@ _PASSABLE_BLOCKS: set[str] = {
 }
 
 _HAZARD_BLOCKS: set[str] = {
-    "lava",
-    "flowing_lava",
-    "fire",
-    "soul_fire",
+    "lava", "flowing_lava",
+    "fire", "soul_fire",
     "cactus",
     "magma_block",
-    "campfire",
-    "soul_campfire",
+    "campfire", "soul_campfire",
     "wither_rose",
     "sweet_berry_bush",
     "powder_snow",
@@ -142,46 +110,20 @@ _HAZARD_BLOCKS: set[str] = {
 
 _STRUCTURE_BLOCKS: set[str] = {
     # Building materials (player-made)
-    "oak_planks",
-    "spruce_planks",
-    "birch_planks",
-    "jungle_planks",
-    "acacia_planks",
-    "dark_oak_planks",
-    "crimson_planks",
-    "warped_planks",
-    "glass",
-    "glass_pane",
-    "white_stained_glass",
-    "bricks",
-    "stone_bricks",
-    "cobblestone",
+    "oak_planks", "spruce_planks", "birch_planks", "jungle_planks",
+    "acacia_planks", "dark_oak_planks", "crimson_planks", "warped_planks",
+    "glass", "glass_pane", "white_stained_glass",
+    "bricks", "stone_bricks", "cobblestone",
     # Infrastructure
-    "rail",
-    "powered_rail",
-    "detector_rail",
-    "activator_rail",
-    "oak_door",
-    "spruce_door",
-    "birch_door",
-    "iron_door",
-    "oak_fence",
-    "oak_fence_gate",
+    "rail", "powered_rail", "detector_rail", "activator_rail",
+    "oak_door", "spruce_door", "birch_door", "iron_door",
+    "oak_fence", "oak_fence_gate",
     # Functional
-    "crafting_table",
-    "furnace",
-    "chest",
-    "barrel",
-    "shulker_box",
-    "bed",
-    "white_bed",
-    "red_bed",
-    "enchanting_table",
-    "anvil",
-    "grindstone",
+    "crafting_table", "furnace", "chest", "barrel", "shulker_box",
+    "bed", "white_bed", "red_bed",
+    "enchanting_table", "anvil", "grindstone",
     "campfire",
-    "lantern",
-    "soul_lantern",
+    "lantern", "soul_lantern",
 }
 
 
@@ -194,30 +136,12 @@ def _is_passable(block_id: str) -> bool:
     if bid.endswith("air"):
         return True
     # Transparent blocks that don't block movement
-    if bid.endswith(
-        (
-            "_slab",
-            "_stairs",
-            "_door",
-            "_trapdoor",
-            "_fence",
-            "_fence_gate",
-            "_wall",
-            "_sign",
-            "sign",
-            "_button",
-            "_plate",
-            "_carpet",
-            "_glass",
-            "_pane",
-            "_sapling",
-            "_seed",
-            "seed",
-            "_coral",
-            "_kelp",
-            "_seagrass",
-        )
-    ):
+    if bid.endswith(("_slab", "_stairs", "_door", "_trapdoor",
+                      "_fence", "_fence_gate", "_wall",
+                      "_sign", "sign", "_button", "_plate",
+                      "_carpet", "_glass", "_pane",
+                      "_sapling", "_seed", "seed",
+                      "_coral", "_kelp", "_seagrass")):
         return True
     return False
 
@@ -232,27 +156,15 @@ def _is_artificial(block_id: str) -> bool:
     """Check whether a block indicates player-made construction."""
     bid = block_id.lower().replace("minecraft:", "")
     return bid in _STRUCTURE_BLOCKS or any(
-        s in bid
-        for s in (
-            "_planks",
-            "_door",
-            "_fence",
-            "_glass",
-            "_bed",
-            "chest",
-            "furnace",
-            "anvil",
-            "crafting_table",
-            "enchanting_table",
-        )
+        s in bid for s in ("_planks", "_door", "_fence", "_glass",
+                           "_bed", "chest", "furnace", "anvil",
+                           "crafting_table", "enchanting_table")
     )
 
 
 async def _can_move_to(
     mc: McpqClient,
-    x: int,
-    y: int,
-    z: int,
+    x: int, y: int, z: int,
 ) -> tuple[bool, str]:
     """Check whether the player can safely occupy the target position.
 
@@ -282,8 +194,7 @@ async def _can_move_to(
 
 async def _walk_toward(
     mc: McpqClient,
-    target_x: float,
-    target_z: float,
+    target_x: float, target_z: float,
     step_size: float = 0.5,
     max_steps: int = 20,
 ) -> str:
@@ -319,7 +230,9 @@ async def _walk_toward(
             f"execute as @p at @s facing {target_x} {py} {target_z} run tp @s ~ ~ ~"
         )
         # Take a small step forward (caret-relative)
-        await mc.run_as_player(f"tp @p ^ ^ ^{step_size}")
+        await mc.run_as_player(
+            f"tp @p ^ ^ ^{step_size}"
+        )
 
         # Check if we've reached the target
         new_pos = await mc.get_player_pos()
@@ -436,65 +349,43 @@ async def _move_to(mc: McpqClient, params: dict) -> ActionResult:
 
 
 async def _move_forward(mc: McpqClient, params: dict) -> ActionResult:
-    """Move forward in small steps with collision detection and auto-step.
+    """Move forward in small steps with collision detection.
 
-    Uses ``/execute as @p at @s run tp @s ^ ^ ^{step}`` (caret-relative
-    entity movement) for realistic WASD-style movement.  Before each step:
-      1. Check collision at the target position (head + feet must be passable)
-      2. Check for hazards (lava, fire, cactus) at the target
-      3. Auto-step-up for slabs/stairs/1-block obstacles
-
-    Constraint: uses ``/run`` (Paper 1.20+) to execute the full command
-    chain in a single tick.
+    Uses caret-relative teleport for small (0.5 block) steps, checking
+    collision before each step.  Falls back to a direct ``/tp`` for
+    larger distances.
     """
     steps = params.get("steps", 2)
     step_size = 0.5
     actual_steps = 0
 
     for _ in range(min(steps, 20)):
+        # Check where we'd be moving
         pos = await mc.get_player_pos()
         if pos is None:
             break
 
-        px, py, pz = pos[0], pos[1], pos[2]
+        target_x = int(pos[0])
+        target_y = int(pos[1] + 0.5)
+        target_z = int(pos[2])
 
-        # Compute target integer coordinates for collision check
-        # We approximate forward direction from yaw:
-        # For simplicity, use caret-relative (^ ^ ^ moves forward)
-        # and check the integer block in front of the player.
-        front_x = int(px)
-        front_y = int(py + 0.5)
-        front_z = int(pz)
+        # Use caret-relative (^ ^ ^ moves in facing direction)
+        # Check collision at the target position
+        try:
+            front_x = int(pos[0] + pos[2] * step_size)  # rough forward
+            front_z = int(pos[2] + pos[0] * step_size)
+        except Exception:
+            front_x, front_z = target_x, target_z
 
-        # Check collision at feet level one step forward
-        ok, reason = await _can_move_to(mc, front_x, front_y, front_z)
+        ok, reason = await _can_move_to(mc, front_x, target_y, front_z)
         if not ok:
-            # Auto-step: try one block up ONLY if the issue is a solid block,
-            # not a hazard (don't auto-step into hazards)
-            is_hazard_block = False
-            try:
-                feet_block = await mc.get_block(front_x, front_y, front_z)
-                below_block = await mc.get_block(front_x, front_y - 1, front_z)
-                if _is_hazard(feet_block) or _is_hazard(below_block):
-                    is_hazard_block = True
-            except Exception:
-                pass
-
-            if not is_hazard_block:
-                ok_up, _ = await _can_move_to(mc, front_x, front_y + 1, front_z)
-                if ok_up:
-                    # Step up: move forward first, then up
-                    await _cmd(
-                        mc,
-                        f"execute as @p at @s run tp @s ^ ^ ^{step_size}",
-                    )
-                    await _cmd(
-                        mc,
-                        f"execute as @p at @s run tp @s ~ ~1 ~",
-                    )
-                    actual_steps += 1
-                    continue
-
+            # Try one block up (auto-step over obstacles)
+            ok_up, _ = await _can_move_to(mc, front_x, target_y + 1, front_z)
+            if ok_up:
+                await _cmd(mc, f"tp @p ^ ^ ^{step_size}")
+                await _cmd(mc, f"tp @p ^ ^1 ^")  # step up
+                actual_steps += 1
+                continue
             return ActionResult(
                 success=False,
                 action=ActionType.MOVE_FORWARD,
@@ -502,9 +393,9 @@ async def _move_forward(mc: McpqClient, params: dict) -> ActionResult:
                 data={"steps_taken": actual_steps, "blocked_by": reason},
             )
 
-        # Check hazard below the target
+        # Check hazard below
         try:
-            below = await mc.get_block(front_x, front_y - 1, front_z)
+            below = await mc.get_block(front_x, target_y - 1, front_z)
             if _is_hazard(below):
                 return ActionResult(
                     success=False,
@@ -515,11 +406,7 @@ async def _move_forward(mc: McpqClient, params: dict) -> ActionResult:
         except Exception:
             pass
 
-        # Take one small step forward using execute-based entity movement
-        await _cmd(
-            mc,
-            f"execute as @p at @s run tp @s ^ ^ ^{step_size}",
-        )
+        await _cmd(mc, f"tp @p ^ ^ ^{step_size}")
         actual_steps += 1
 
     return ActionResult(
@@ -531,14 +418,7 @@ async def _move_forward(mc: McpqClient, params: dict) -> ActionResult:
 
 
 async def _move_back(mc: McpqClient, params: dict) -> ActionResult:
-    """Move backward in small steps with collision detection and auto-step.
-
-    Uses ``/execute as @p at @s run tp @s ^ ^ ^-{step}`` for realistic
-    WASD-style backward movement.  Before each step:
-      1. Check collision at the target position
-      2. Check for hazards
-      3. Auto-jump up for single-block obstacles
-    """
+    """Move backward in small steps with collision detection."""
     steps = params.get("steps", 2)
     step_size = 0.5
     actual_steps = 0
@@ -548,26 +428,18 @@ async def _move_back(mc: McpqClient, params: dict) -> ActionResult:
         if pos is None:
             break
 
-        px, py, pz = pos[0], pos[1], pos[2]
-        front_y = int(py + 0.5)
+        target_x = int(pos[0])
+        target_y = int(pos[1] + 0.5)
+        target_z = int(pos[2])
 
-        # For collision check, the target is the block we'd end up in
-        ok, reason = await _can_move_to(mc, int(px), front_y, int(pz))
+        try:
+            back_x = int(pos[0] - pos[2] * step_size)
+            back_z = int(pos[2] - pos[0] * step_size)
+        except Exception:
+            back_x, back_z = target_x, target_z
+
+        ok, reason = await _can_move_to(mc, back_x, target_y, back_z)
         if not ok:
-            # Auto-step: try one block up
-            ok_up, _ = await _can_move_to(mc, int(px), front_y + 1, int(pz))
-            if ok_up:
-                await _cmd(
-                    mc,
-                    f"execute as @p at @s run tp @s ^ ^ ^-{step_size}",
-                )
-                await _cmd(
-                    mc,
-                    f"execute as @p at @s run tp @s ~ ~1 ~",
-                )
-                actual_steps += 1
-                continue
-
             return ActionResult(
                 success=False,
                 action=ActionType.MOVE_BACK,
@@ -576,7 +448,7 @@ async def _move_back(mc: McpqClient, params: dict) -> ActionResult:
             )
 
         try:
-            below = await mc.get_block(int(px), front_y - 1, int(pz))
+            below = await mc.get_block(back_x, target_y - 1, back_z)
             if _is_hazard(below):
                 return ActionResult(
                     success=False,
@@ -587,10 +459,7 @@ async def _move_back(mc: McpqClient, params: dict) -> ActionResult:
         except Exception:
             pass
 
-        await _cmd(
-            mc,
-            f"execute as @p at @s run tp @s ^ ^ ^-{step_size}",
-        )
+        await _cmd(mc, f"tp @p ^ ^ ^-{step_size}")
         actual_steps += 1
 
     return ActionResult(
@@ -654,8 +523,7 @@ async def _walk_to(mc: McpqClient, params: dict) -> ActionResult:
         action=ActionType.WALK_TO,
         message=result,
         data={
-            "x": x,
-            "z": z,
+            "x": x, "z": z,
             "distance": distance,
             "remaining": remaining,
         },
@@ -665,14 +533,11 @@ async def _walk_to(mc: McpqClient, params: dict) -> ActionResult:
 async def _turn_left(mc: McpqClient, params: dict) -> ActionResult:
     """Turn left by 15 degrees (gradual rotation).
 
-    Uses ``/execute as @p at @s run tp @s ~ ~ ~ ~-15 ~`` for proper
-    entity-level rotation (triggers sound, animation, collision updates).
-
     The space after the third ``~`` is critical — without it Minecraft
-    parses ``~-15`` as ``z = current_z - 15`` (teleport) instead of
+    parses ``~-90`` as ``z = current_z - 90`` (teleport) instead of
     ``yaw = current_yaw - 15`` (rotate).
     """
-    resp = await _cmd(mc, "execute as @p at @s run tp @s ~ ~ ~ ~-15 ~")
+    resp = await _cmd(mc, "tp @p ~ ~ ~ ~-15 ~")
     return ActionResult(
         success=True,
         action=ActionType.TURN_LEFT,
@@ -682,12 +547,8 @@ async def _turn_left(mc: McpqClient, params: dict) -> ActionResult:
 
 
 async def _turn_right(mc: McpqClient, params: dict) -> ActionResult:
-    """Turn right by 15 degrees (gradual rotation).
-
-    Uses ``/execute as @p at @s run tp @s ~ ~ ~ ~15 ~`` for proper
-    entity-level rotation.
-    """
-    resp = await _cmd(mc, "execute as @p at @s run tp @s ~ ~ ~ ~15 ~")
+    """Turn right by 15 degrees (gradual rotation)."""
+    resp = await _cmd(mc, "tp @p ~ ~ ~ ~15 ~")
     return ActionResult(
         success=True,
         action=ActionType.TURN_RIGHT,
@@ -697,14 +558,8 @@ async def _turn_right(mc: McpqClient, params: dict) -> ActionResult:
 
 
 async def _jump(mc: McpqClient, params: dict) -> ActionResult:
-    """Jump up one block.
-
-    Uses ``/execute as @p at @s run tp @s ~ ~1 ~`` for entity-level
-    vertical movement.  Collision is NOT checked because jumping is
-    always allowed (the player's own head collision with the block
-    above is checked by Minecraft server).
-    """
-    resp = await _cmd(mc, "execute as @p at @s run tp @s ~ ~1 ~")
+    """Jump up one block (teleport-based)."""
+    resp = await _cmd(mc, "tp @p ~ ~1 ~")
     return ActionResult(
         success=True,
         action=ActionType.JUMP,
@@ -839,7 +694,7 @@ async def _drop_item(mc: McpqClient, params: dict) -> ActionResult:
             await _cmd(mc, f"clear @p {item} {amount}")
             spawn_cmd = (
                 f"summon item {pos[0]:.1f} {pos[1]:.1f} {pos[2]:.1f} "
-                f'{{Item:{{id:"minecraft:{item}",Count:{amount}b}}}}'
+                f"{{Item:{{id:\"minecraft:{item}\",Count:{amount}b}}}}"
             )
             await _cmd(mc, spawn_cmd)
             return ActionResult(
@@ -953,7 +808,7 @@ async def _attack(mc: McpqClient, params: dict) -> ActionResult:
         success=False,
         action=ActionType.ATTACK,
         message=f"Attack failed — Paper 26.1.x removed execute attack. "
-        f"Try crafting/killing via commands instead.",
+                f"Try crafting/killing via commands instead.",
     )
 
 
@@ -981,8 +836,8 @@ async def _scan(mc: McpqClient, params: dict) -> ActionResult:
             # Front/back/left/right at feet level
             nearby["north"] = await mc.get_block(px, py - 1, pz - 1)
             nearby["south"] = await mc.get_block(px, py - 1, pz + 1)
-            nearby["east"] = await mc.get_block(px + 1, py - 1, pz)
-            nearby["west"] = await mc.get_block(px - 1, py - 1, pz)
+            nearby["east"]  = await mc.get_block(px + 1, py - 1, pz)
+            nearby["west"]  = await mc.get_block(px - 1, py - 1, pz)
 
             # What's directly in front at eye level
             nearby["front_eye"] = await mc.get_block(px, py, pz + 1)
@@ -995,18 +850,12 @@ async def _scan(mc: McpqClient, params: dict) -> ActionResult:
         if radius >= 3:
             sample: dict[str, str] = {}
             try:
-                for dx, dz in [
-                    (0, 2),
-                    (2, 0),
-                    (0, -2),
-                    (-2, 0),
-                    (2, 2),
-                    (2, -2),
-                    (-2, 2),
-                    (-2, -2),
-                ]:
+                for dx, dz in [(0, 2), (2, 0), (0, -2), (-2, 0),
+                               (2, 2), (2, -2), (-2, 2), (-2, -2)]:
                     key = f"d{dx:+}z{dz:+}"
-                    sample[key] = await mc.get_block(px + dx, py - 1, pz + dz)
+                    sample[key] = await mc.get_block(
+                        px + dx, py - 1, pz + dz
+                    )
             except Exception:
                 pass
             data["sample"] = sample
@@ -1066,7 +915,6 @@ async def _check_health(mc: McpqClient, params: dict) -> ActionResult:
     parsed = None
     try:
         import re as _re
-
         m = _re.search(r"(-?\d+\.?\d*)", resp or "")
         if m:
             parsed = float(m.group(1))
@@ -1163,7 +1011,6 @@ async def _chat(mc: McpqClient, params: dict) -> ActionResult:
 
 async def _wait(mc: McpqClient, params: dict) -> ActionResult:
     import asyncio as _asyncio
-
     seconds = params.get("seconds", 2.0)
     await _asyncio.sleep(seconds)
     return ActionResult(

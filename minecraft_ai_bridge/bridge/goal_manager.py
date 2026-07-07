@@ -187,7 +187,9 @@ class GoalManager:
                     )
                     sg._parent_ref = self._root
                     self._root.sub_goals.append(sg)
-                logger.info("Decomposed into %d sub-goals", self.sub_goal_count)
+                logger.info(
+                    "Decomposed into %d sub-goals", self.sub_goal_count
+                )
                 self._current = self._root.active_sub_goal or self._root
                 return self._root
             else:
@@ -258,28 +260,27 @@ class GoalManager:
             return False
 
         # Collect all sub-goal descriptions
-        descriptions = [sg.get("description", sg.get("desc", "")) for sg in subgoals]
+        descriptions = [
+            sg.get("description", sg.get("desc", ""))
+            for sg in subgoals
+        ]
         combined = " ".join(descriptions).lower()
 
         # Check for coordinate/location references
-        has_coord_refs = bool(
-            re.search(
-                r"target\s*coord|teleport\s+to|move\s+to\s+coord|"
-                r"go\s+to\s+\d|navigate\s+to|travel\s+to|"
-                r"locate\s+coord|find\s+coord|reach\s+coord",
-                combined,
-            )
-        )
+        has_coord_refs = bool(re.search(
+            r"target\s*coord|teleport\s+to|move\s+to\s+coord|"
+            r"go\s+to\s+\d|navigate\s+to|travel\s+to|"
+            r"locate\s+coord|find\s+coord|reach\s+coord",
+            combined,
+        ))
 
         # Check if the original goal contains any coordinate references
         goal_lower = goal.lower()
-        goal_has_coords = bool(
-            re.search(
-                r"teleport|coord|\bgo\s+to\b|\bmove\s+to\b|"
-                r"\bat\s+\(|\blocate\b|\bnavigate\b",
-                goal_lower,
-            )
-        )
+        goal_has_coords = bool(re.search(
+            r"teleport|coord|\bgo\s+to\b|\bmove\s+to\b|"
+            r"\bat\s+\(|\blocate\b|\bnavigate\b",
+            goal_lower,
+        ))
 
         # If sub-goals reference teleport/move-to-coords but the goal
         # doesn't mention coordinates or teleportation, it's hallucinated.
@@ -298,7 +299,7 @@ class GoalManager:
         for i, sg in enumerate(subgoals):
             self._root.sub_goals.append(
                 AgentGoal(
-                    description=sg.get("description", f"Step {i + 1}"),
+                    description=sg.get("description", f"Step {i+1}"),
                     priority=i + 1,
                     depth=1,
                     parent_goal=description,

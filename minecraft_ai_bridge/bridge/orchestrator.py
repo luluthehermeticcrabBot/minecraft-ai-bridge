@@ -14,7 +14,9 @@ from ..config import AppConfig
 from ..llm.client import LLMClient, OpenCodeServerClient, create_llm_client
 from ..llm.models import LLMResponse, Message, Role
 from ..llm.prompts import SYSTEM_PROMPT, format_goal, format_state
-from ..minecraft import ActionResult, ActionType, McpqClient, Observer, WorldState, execute_action
+from ..minecraft import ActionType, ActionResult, execute_action
+from ..minecraft import McpqClient, Observer, WorldState
+
 from .chat_commands import ChatCommandHandler
 from .goal_manager import GoalManager
 from .inventory_manager import InventoryManager
@@ -86,8 +88,7 @@ class Orchestrator:
         api_cfg = self._config.mc_api
         logger.info(
             "Connecting to MCPQ plugin at %s:%s ...",
-            api_cfg.host,
-            api_cfg.port,
+            api_cfg.host, api_cfg.port,
         )
         await self._connect()
         logger.info("MCPQ connected — controlling player: %s", api_cfg.player_name)
@@ -95,7 +96,8 @@ class Orchestrator:
         # 2. Set up goal hierarchy
         logger.info("Decomposing goal into sub-tasks via LLM ...")
         await self._goals.set_goal(goal_text)
-        logger.info("Goal decomposition complete — %d sub-goals", self._goals.sub_goal_count)
+        logger.info("Goal decomposition complete — %d sub-goals",
+                     self._goals.sub_goal_count)
 
         # 3. Main loop
         done = False
@@ -107,8 +109,7 @@ class Orchestrator:
                 self._consecutive_failures += 1
                 logger.exception(
                     "Fatal error on turn %d (consecutive failures: %d)",
-                    self._turn,
-                    self._consecutive_failures,
+                    self._turn, self._consecutive_failures,
                 )
                 await self._chat(
                     f"Error on turn {self._turn}: {exc}. "
@@ -170,7 +171,6 @@ class Orchestrator:
                     )
                     if target_pos_raw:
                         import re as _re
-
                         m = _re.search(r"\[([^\]]+)\]", target_pos_raw)
                         if m:
                             parts = m.group(1).split(",")
@@ -214,9 +214,7 @@ class Orchestrator:
         # what happened (especially failures).
         if context.last_action_result:
             messages.append(
-                Message(
-                    role=Role.USER, content=f"=== Last Action ===\n{context.last_action_result}"
-                )
+                Message(role=Role.USER, content=f"=== Last Action ===\n{context.last_action_result}")
             )
 
         # Append recent history (capped to avoid unbounded growth)
@@ -228,9 +226,7 @@ class Orchestrator:
         )
 
         if self._verbose:
-            logger.info(
-                "LLM decision: %s → %s", response.action, json.dumps(response.action_params)
-            )
+            logger.info("LLM decision: %s → %s", response.action, json.dumps(response.action_params))
 
         # ── Act ───────────────────────────────────────────────────
         result = await self._act(response)
@@ -242,14 +238,11 @@ class Orchestrator:
             self._consecutive_failures += 1
 
         # ── Record ────────────────────────────────────────────────
-        self._memory.record_action(
-            response.action,
-            {
-                "success": result.success,
-                "message": result.message,
-                "data": result.data,
-            },
-        )
+        self._memory.record_action(response.action, {
+            "success": result.success,
+            "message": result.message,
+            "data": result.data,
+        })
 
         if self._verbose:
             logger.info("Result: %s — %s", "✓" if result.success else "✗", result.message)
@@ -282,7 +275,9 @@ class Orchestrator:
 
         # Goal context
         goal_context = (
-            f"=== Goal ===\n{self._goals.progress}\n\nCurrent task: {self._goals.current_goal}"
+            f"=== Goal ===\n"
+            f"{self._goals.progress}\n\n"
+            f"Current task: {self._goals.current_goal}"
         )
 
         # Memory context
@@ -384,7 +379,9 @@ class Orchestrator:
             # Player doesn't exist yet — spawn via /botsummon
             logger.info("Player '%s' not found — summoning bot …", player_name)
             try:
-                spawn_result = await self._mc.run_command_blocking(f"botsummon {player_name}")
+                spawn_result = await self._mc.run_command_blocking(
+                    f"botsummon {player_name}"
+                )
                 logger.info("Bot summon command: %s", spawn_result or "OK")
             except Exception as spawn_err:
                 logger.warning(
@@ -407,7 +404,8 @@ class Orchestrator:
                     pass
             else:
                 logger.warning(
-                    "Player '%s' not confirmed after polling. Continuing — some MCPQ ops may fail.",
+                    "Player '%s' not confirmed after polling. "
+                    "Continuing — some MCPQ ops may fail.",
                     player_name,
                 )
 
@@ -418,10 +416,7 @@ class Orchestrator:
         safe_x, safe_y, safe_z = 0, 65, 0
         logger.info(
             "Teleporting player '%s' to (%d, %d, %d) …",
-            player_name,
-            safe_x,
-            safe_y,
-            safe_z,
+            player_name, safe_x, safe_y, safe_z,
         )
         for attempt in range(3):
             try:
@@ -431,10 +426,7 @@ class Orchestrator:
                     for dz in (-1, 0, 1):
                         try:
                             await self._mc.set_block(
-                                "dirt",
-                                safe_x + dx,
-                                safe_y - 1,
-                                safe_z + dz,
+                                "dirt", safe_x + dx, safe_y - 1, safe_z + dz,
                             )
                         except Exception:
                             pass
@@ -445,15 +437,14 @@ class Orchestrator:
                         "Player at (%.1f, %.1f, %.1f) — feet: %s",
                         *safe_pos,
                         await self._mc.get_block(
-                            int(safe_pos[0]),
-                            int(safe_pos[1]) - 1,
-                            int(safe_pos[2]),
+                            int(safe_pos[0]), int(safe_pos[1]) - 1, int(safe_pos[2]),
                         ),
                     )
                     break
                 logger.warning("Teleport attempt %d: position unknown", attempt + 1)
             except Exception as safe_err:
-                logger.warning("Safe teleport attempt %d failed: %s", attempt + 1, safe_err)
+                logger.warning("Safe teleport attempt %d failed: %s",
+                               attempt + 1, safe_err)
                 await asyncio.sleep(2)
 
         # Initialise sub-systems (N1 inventory, N4 chat commands)
