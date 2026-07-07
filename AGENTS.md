@@ -17,7 +17,8 @@
 
 ### Minecraft Layer (`minecraft_ai_bridge/minecraft/`)
 - `mc_api.py` — `McpqClient` async wrapper around MCPQ gRPC (all calls via `asyncio.to_thread`)
-- `actions.py` — 24 `ActionType` enum values + handlers + `execute_action()` dispatcher
+- `actions.py` — 25 `ActionType` enum values + handlers + `execute_action()` dispatcher (including `sprint` + A*-powered `walk_to`)
+- `pathfinding.py` — A* pathfinder that scans a walkability grid via MCPQ `getBlock` and returns waypoints
 - `observer.py` — `Observer` + `WorldState` dataclass, concurrent observation via `asyncio.gather`
 - `rcon.py` — async RCON client (optional, unmaintained — MCPQ is primary)
 
@@ -66,8 +67,8 @@
 
 ### Performance
 - **Scanner limited to radius 16**: The `scan` action caps at r=16 to avoid MCPQ rate limiting. For scanning large areas, needs chunk-based iteration.
-- **No player movement simulation**: Movement is via `/tp` commands, not walking/entity physics. OK for creative mode, less useful for survival.
-- **No inventory tracking**: Inventory is read via `/data get entity @p Inventory`. The observer grabs it raw but doesn't parse into structured slots. LLM sees raw NBT.
+- **Movement system**: Step-by-step WASD-like movement via execute-based commands with collision detection, hazard avoidance, and A* pathfinding. Slow for very long distances (>50 blocks falls back to teleport).
+- **Inventory tracking**: Inventory parsed into structured `InventorySlot` objects; observer grabs via `/data get entity @p Inventory` and inventory manager tracks slots.
 
 ### Paper / MCPQ
 - **Paper 26.1.2** (Mojang YY numbering, April 2026): MCPQ v2.2 works. Paper API 26.1.2.build.63-stable.

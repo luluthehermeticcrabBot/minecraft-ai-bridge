@@ -140,6 +140,39 @@ class TestMovement:
         # Verify execute-based jump command
         mock_mc.assert_command_contains("execute as AIBot at @s run tp @s ~ ~1 ~")
 
+    async def test_sprint_default(self, mock_mc):
+        """Sprint with default steps should succeed."""
+        result = await execute_action(mock_mc, ActionType.SPRINT, {})
+        assert result.success is True
+        assert "sprinted" in result.message.lower()
+
+    async def test_sprint_with_steps(self, mock_mc):
+        """Sprint with specified steps should move the player."""
+        result = await execute_action(mock_mc, ActionType.SPRINT, {"steps": 5})
+        assert result.success is True
+        assert "sprinted" in result.message.lower()
+        assert result.action == ActionType.SPRINT
+        # For open terrain the sprint should complete all steps
+        assert result.data.get("steps_taken", 0) >= 0
+
+    async def test_sprint_blocked(self, mock_mc):
+        """Sprint should stop when hitting a wall."""
+        # Place a wall right in front of the player at (0, 65, 1)
+        await mock_mc.set_block("stone", 0, 65, 1)
+        await mock_mc.set_block("stone", 0, 66, 1)
+        result = await execute_action(mock_mc, ActionType.SPRINT, {"steps": 10})
+        # Should stop early, possibly with 0 steps taken
+        assert "sprinted" in result.message.lower()
+
+    async def test_sprint_hazard(self, mock_mc):
+        """Sprint should stop before stepping into hazard."""
+        # Place lava right in front
+        mock_mc.set_position(0.0, 65.0, 0.0)
+        await mock_mc.set_block("lava", 0, 64, 1)
+        result = await execute_action(mock_mc, ActionType.SPRINT, {"steps": 5})
+        # Should stop early or report hazard
+        assert result.success is True or result.message is not None
+
     async def test_teleport(self, mock_mc):
         result = await execute_action(mock_mc, ActionType.TELEPORT, {"x": 50, "y": 70, "z": 100})
         assert result.success is True

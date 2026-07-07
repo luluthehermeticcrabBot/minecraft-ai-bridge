@@ -28,6 +28,7 @@ class ActionType(str, Enum):
     TURN_LEFT = "turn_left"
     TURN_RIGHT = "turn_right"
     JUMP = "jump"
+    SPRINT = "sprint"          # faster forward movement (1.0-block steps)
     TELEPORT = "teleport"
 
     # ── Interaction ─────────────────────────────────────────────────
@@ -196,13 +197,18 @@ async def _walk_toward(
     mc: McpqClient,
     target_x: float, target_z: float,
     step_size: float = 0.5,
-    max_steps: int = 20,
+    max_steps: int = 50,
 ) -> str:
-    """Walk the player toward a target coordinate in small steps, checking
-    collision at each step.
+    """Walk the player toward a target coordinate, using A* pathfinding
+    to navigate around obstacles when available.
 
-    Uses ``tp @p ^ ^ ^{step}`` (caret-relative) for forward movement,
-    collimated with ``/execute facing`` to face the target.
+    For the first invocation the pathfinder is called; subsequent steps
+    follow the pre-computed waypoint list.  If pathfinding isn't available
+    or the path is short, falls back to straight-line movement with
+    collision detection.
+
+    Each step uses ``/execute as @p at @s run tp @s ^ ^ ^{step}`` for
+    proper entity-context movement.
 
     Returns a summary string describing what happened.
     """
@@ -222,6 +228,62 @@ async def _walk_toward(
         )
         return f"Already at target ({distance:.1f}m)"
 
+    # Try A* pathfinding for medium-to-long distances
+    waypoints: list[tuple[float, float]] | None = None
+    if distance > 5:
+        try:
+            from .pathfinding import find_walk_path
+
+            found = await find_walk_path(mc, px, pz, target_x, target_z, int(py))
+            if found and len(found) > 1:
+                waypoints = found
+                logger.info("Pathfinder returned %d waypoints for %.0fm route", len(found), distance)
+        except Exception as exc:
+            logger.debug("Pathfinding failed — falling back to straight-line: %s", exc)
+
+    if waypoints:
+        # Pathfinding waypoint follow
+        steps_taken = 0
+        failed_at = ""
+        for wx, wz in waypoints:
+            if steps_taken >= max_steps:
+                break
+            # Face the waypoint
+            await mc.run_as_player(
+                f"execute as @p at @s facing {wx} {py} {wz} run tp @s ~ ~ ~"
+            )
+            # Step forward
+            await mc.run_as_player(
+                f"execute as @p at @s run tp @s ^ ^ ^{step_size}"
+            )
+            steps_taken += 1
+
+            # Quick collision check every other step
+            if steps_taken % 2 == 0:
+                new_pos = await mc.get_player_pos()
+                if new_pos:
+                    ok, reason = await _can_move_to(
+                        mc, int(new_pos[0]), int(new_pos[1]), int(new_pos[2]),
+                    )
+                    if not ok:
+                        failed_at = reason
+                        break
+                    # Hazard check
+                    try:
+                        below = await mc.get_block(
+                            int(new_pos[0]), int(new_pos[1]) - 1, int(new_pos[2]),
+                        )
+                        if _is_hazard(below):
+                            failed_at = f"hazard below ({below})"
+                            break
+                    except Exception:
+                        pass
+
+        if failed_at:
+            return f"Pathfinding walked {steps_taken} waypoint steps before stopping: {failed_at}"
+        return f"Pathfinding completed {steps_taken} waypoint steps ({distance:.1f}m)"
+
+    # Fallback: straight-line walking with collision detection (original logic)
     steps_taken = 0
     failed_at = ""
     for step_n in range(min(max_steps, int(distance / step_size) + 1)):
@@ -229,9 +291,9 @@ async def _walk_toward(
         await mc.run_as_player(
             f"execute as @p at @s facing {target_x} {py} {target_z} run tp @s ~ ~ ~"
         )
-        # Take a small step forward (caret-relative)
+        # Take a small step forward (execute-based for entity context)
         await mc.run_as_player(
-            f"tp @p ^ ^ ^{step_size}"
+            f"execute as @p at @s run tp @s ^ ^ ^{step_size}"
         )
 
         # Check if we've reached the target
@@ -247,19 +309,19 @@ async def _walk_toward(
         if new_dist < step_size:
             break
 
-        # Collision check every 2 steps (don't walk into walls)
+        # Collision check every 2 steps
         if step_n % 2 == 0:
             ok, reason = await _can_move_to(
                 mc,
-                int(target_x),
+                int(new_pos[0]),
                 int(new_pos[1]),
-                int(target_z),
+                int(new_pos[2]),
             )
             if not ok:
                 failed_at = reason
                 break
 
-        # Check for hazards at new position
+        # Hazard check every 2 steps
         if step_n % 2 == 0:
             try:
                 block_below = await mc.get_block(
@@ -382,7 +444,7 @@ async def _move_forward(mc: McpqClient, params: dict) -> ActionResult:
             # Try one block up (auto-step over obstacles)
             ok_up, _ = await _can_move_to(mc, front_x, target_y + 1, front_z)
             if ok_up:
-                await _cmd(mc, f"tp @p ^ ^ ^{step_size}")
+                await _cmd(mc, f"execute as @p at @s run tp @s ^ ^ ^{step_size}")
                 await _cmd(mc, f"tp @p ^ ^1 ^")  # step up
                 actual_steps += 1
                 continue
@@ -406,7 +468,7 @@ async def _move_forward(mc: McpqClient, params: dict) -> ActionResult:
         except Exception:
             pass
 
-        await _cmd(mc, f"tp @p ^ ^ ^{step_size}")
+        await _cmd(mc, f"execute as @p at @s run tp @s ^ ^ ^{step_size}")
         actual_steps += 1
 
     return ActionResult(
@@ -459,13 +521,72 @@ async def _move_back(mc: McpqClient, params: dict) -> ActionResult:
         except Exception:
             pass
 
-        await _cmd(mc, f"tp @p ^ ^ ^-{step_size}")
+        await _cmd(mc, f"execute as @p at @s run tp @s ^ ^ ^-{step_size}")
         actual_steps += 1
 
     return ActionResult(
         success=(actual_steps > 0),
         action=ActionType.MOVE_BACK,
         message=f"Moved back {actual_steps} step(s)",
+        data={"steps": steps, "steps_taken": actual_steps},
+    )
+
+
+async def _sprint(mc: McpqClient, params: dict) -> ActionResult:
+    """Sprint forward — faster forward movement with 1.0-block steps.
+
+    Uses larger steps than ``move_forward``, ideal for open terrain.
+    Collision detection runs every 3 steps to keep it fast.
+    """
+    steps = params.get("steps", 4)
+    step_size = 1.0
+    actual_steps = 0
+
+    for _ in range(min(steps, 30)):
+        pos = await mc.get_player_pos()
+        if pos is None:
+            break
+
+        # Rough forward position
+        try:
+            front_x = int(pos[0] + pos[2] * step_size)
+            front_z = int(pos[2] + pos[0] * step_size)
+        except Exception:
+            break
+
+        target_y = int(pos[1] + 0.5)
+
+        # Collision check every 3 steps
+        if actual_steps % 3 == 0:
+            ok, reason = await _can_move_to(mc, front_x, target_y, front_z)
+            if not ok:
+                return ActionResult(
+                    success=(actual_steps > 0),
+                    action=ActionType.SPRINT,
+                    message=f"Sprinted {actual_steps} step(s) before stopping: {reason}",
+                    data={"steps_taken": actual_steps, "blocked_by": reason},
+                )
+
+            # Quick hazard check
+            try:
+                below = await mc.get_block(front_x, target_y - 1, front_z)
+                if _is_hazard(below):
+                    return ActionResult(
+                        success=(actual_steps > 0),
+                        action=ActionType.SPRINT,
+                        message=f"Sprinted {actual_steps} steps — hazard below ({below})",
+                        data={"steps_taken": actual_steps, "hazard": below},
+                    )
+            except Exception:
+                pass
+
+        await _cmd(mc, f"execute as @p at @s run tp @s ^ ^ ^{step_size}")
+        actual_steps += 1
+
+    return ActionResult(
+        success=(actual_steps > 0),
+        action=ActionType.SPRINT,
+        message=f"Sprinted {actual_steps} step(s)",
         data={"steps": steps, "steps_taken": actual_steps},
     )
 
@@ -1041,6 +1162,7 @@ _HANDLERS: dict[ActionType, Handler] = {
     ActionType.TURN_LEFT: _turn_left,
     ActionType.TURN_RIGHT: _turn_right,
     ActionType.JUMP: _jump,
+    ActionType.SPRINT: _sprint,
     ActionType.TELEPORT: _teleport,
     ActionType.BREAK_BLOCK: _break_block,
     ActionType.PLACE_BLOCK: _place_block,

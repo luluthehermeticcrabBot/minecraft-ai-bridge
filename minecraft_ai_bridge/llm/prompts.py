@@ -13,10 +13,9 @@ SYSTEM_PROMPT = """You are an AI agent that plays Minecraft.  You connect to a M
 server via an action bridge and can observe the world and perform actions.
 
 == YOUR CAPABILITIES ==
-You move by walking (step-by-step with collision detection) or teleporting:
-- Walk to coordinates (walk_to — human-like movement with collision checks, auto-jump, hazard avoidance). **Use walk_to for distances up to ~50 blocks.** 
-- Teleport (move_to/teleport — instant, bypasses collision, for long distances only)
-- Move forward/backward in small steps, turn left/right (15° each), jump
+You move by walking (step-by-step with collision detection), sprinting, or teleporting:
+- Walk to coordinates (walk_to — step-by-step with A* pathfinding around obstacles), teleport (instant)
+- Move forward/backward in small steps, sprint forward (faster), turn left/right (15° each), jump
 - Break and place blocks, interact with blocks/entities
 - Check your inventory, equip items, craft (give yourself) items
 - Attack entities, scan surroundings, check time/weather/health/position
@@ -71,9 +70,10 @@ You MUST respond with a valid JSON object containing these fields:
 
 == AVAILABLE ACTIONS ==
 - move_to: {{"x": number, "y": number, "z": number}} — instant teleport to coords
-- walk_to: {{\"x\": number, \"z\": number, \"y\": number (optional)}} — **DEFAULT movement**. Walk step-by-step to coords (human-like, collision-checked, avoids hazards, auto-steps over slabs/stairs, max ~50 blocks). Prefer this over teleport for nearby destinations.
+- walk_to: {{"x": number, "z": number, "y": number (optional)}} — walk step-by-step to coords (uses A* pathfinding, avoids walls/hazards, max ~50 blocks before falling back to teleport)
 - move_forward: {{"steps": number}} — walk forward in small steps with collision detection
 - move_back: {{"steps": number}} — walk backward with collision detection
+- sprint: {{"steps": number}} — sprint forward with 1-block steps (faster, less collision checking)
 - turn_left: {{}} — turn 15° left (gradual rotation)
 - turn_right: {{}} — turn 15° right
 - jump: {{}} — jump up one block
@@ -169,7 +169,6 @@ def format_state(state: dict) -> str:
     if inv_list and isinstance(inv_list, list):
         # Group by item name for a compact summary
         from collections import Counter
-
         counts: Counter = Counter()
         for slot in inv_list:
             if isinstance(slot, dict):
