@@ -44,6 +44,7 @@ class ActionType(StrEnum):
     CRAFT_ITEM = "craft_item"
     DROP_ITEM = "drop_item"
     EAT = "eat"
+    HEAL = "heal"
 
     # ── Combat ──────────────────────────────────────────────────────
     ATTACK = "attack"
@@ -1110,6 +1111,72 @@ async def _eat(mc: McpqClient, params: dict) -> ActionResult:
     )
 
 
+# ── Healing ─────────────────────────────────────────────────────────────
+
+
+async def _heal(mc: McpqClient, params: dict) -> ActionResult:
+    """Apply healing effects to restore health.
+
+    Uses ``/effect give @p regeneration`` and optionally
+    ``/effect give @p instant_health`` to restore health without
+    requiring a real client to consume healing items.  The action
+    always applies regeneration for 30s at level 2 (regenerates
+    ~10 HP).  If ``heal_item`` is ``"golden_apple"`` or
+    ``"enchanted_golden_apple"``, it also applies absorption
+    and instant health effects.
+
+    Parameters (from ``params``):
+      - ``heal_item`` (optional): the item ID to 'simulate'
+        consuming (e.g. ``"golden_apple"``).  If provided and
+        is a healing item, the corresponding effects are applied
+        and the item is cleared from inventory.
+
+    Returns ActionResult with structured ``data``:
+      - ``heal_item``: the item that was used (or ``"generic"``)
+      - ``heal_effects``: list of effect names applied
+    """
+    heal_item = str(params.get("heal_item", "")).strip().lower().replace("minecraft:", "")
+    effects_applied: list[str] = []
+    is_gapple = heal_item in ("golden_apple", "enchanted_golden_apple")
+
+    # Always apply regeneration
+    with contextlib.suppress(Exception):
+        await _cmd(mc, "effect give @p regeneration 30 2")
+        effects_applied.append("regeneration II (30s)")
+        logger.debug("Applied regeneration effect")
+
+    # Golden apple bonus effects
+    if is_gapple:
+        with contextlib.suppress(Exception):
+            await _cmd(mc, "effect give @p absorption 120 1")
+            effects_applied.append("absorption I (120s)")
+        with contextlib.suppress(Exception):
+            await _cmd(mc, "effect give @p instant_health 1 2")
+            effects_applied.append("instant_health II")
+        if heal_item == "enchanted_golden_apple":
+            with contextlib.suppress(Exception):
+                await _cmd(mc, "effect give @p fire_resistance 600 0")
+                effects_applied.append("fire_resistance (600s)")
+            with contextlib.suppress(Exception):
+                await _cmd(mc, "effect give @p resistance 600 0")
+                effects_applied.append("resistance (600s)")
+
+    # Consume the item from inventory (best-effort)
+    if heal_item:
+        with contextlib.suppress(Exception):
+            await _cmd(mc, f"clear @p minecraft:{heal_item} 1")
+
+    return ActionResult(
+        success=True,
+        action=ActionType.HEAL,
+        message=(f"Healed with {heal_item or 'generic effects'}: {', '.join(effects_applied)}"),
+        data={
+            "heal_item": heal_item or "generic",
+            "heal_effects": effects_applied,
+        },
+    )
+
+
 # ── Combat ──────────────────────────────────────────────────────────────
 
 
@@ -1641,6 +1708,7 @@ _HANDLERS: dict[ActionType, Handler] = {
     ActionType.CRAFT_ITEM: _craft_item,
     ActionType.DROP_ITEM: _drop_item,
     ActionType.EAT: _eat,
+    ActionType.HEAL: _heal,
     ActionType.ATTACK: _attack,
     ActionType.SCAN_ENTITIES: _scan_entities,
     ActionType.SCAN: _scan,

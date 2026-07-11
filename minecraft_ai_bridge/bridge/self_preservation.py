@@ -79,11 +79,16 @@ class PreservationConfig:
     # Threat thresholds.  Above these, prefer flee over fight.
     max_fightable_mobs: int = 1
     flee_health_threshold: float = 6.0
+    # Below this health, the agent will always flee (even from a single mob)
+    # rather than fight.
+    critical_health_threshold: float = 2.0
     # Feature flags
     enable_reflex_attack: bool = True
     enable_reflex_flee: bool = True
     enable_auto_find_food: bool = True
     enable_auto_consume: bool = True
+    enable_auto_heal: bool = True
+    enable_day_night_awareness: bool = True
 
 
 # Result of a threat assessment.  Used to decide fight-vs-flee.
@@ -153,6 +158,17 @@ class SelfPreservationLayer:
         # through if no food is in inventory.
         if self._config.enable_auto_consume and reflex is None:
             reflex = await self._maybe_auto_consume(world)
+
+        # Auto-heal: if health is critically low AND golden apples
+        # (or similar healing items) are in inventory, use them without
+        # waiting for the LLM to decide.
+        if self._config.enable_auto_heal and reflex is None:
+            reflex = await self._maybe_auto_heal(world)
+
+        # Day/night awareness: when night falls, record a memory fact
+        # so the LLM sees it in its context on the next turn.
+        if self._config.enable_day_night_awareness:
+            self._maybe_note_time_of_day(world)
 
         # Memory hint for the LLM context window.
         if world.health is not None and world.health < self._config.health_critical_threshold:
@@ -230,15 +246,20 @@ class SelfPreservationLayer:
     def _evaluate_threat(self, mobs: list[str], world: WorldState) -> str:
         """Decide whether to fight the hostiles or flee from them.
 
-        The current heuristic:
-          * If there are more than ``max_fightable_mobs`` hostiles in
-            range, flee — even a maxed-out player can't safely take on
-            a swarm.
-          * If health is below ``flee_health_threshold`` and there's
-            more than one hostile, flee — the cost of a fight is too
-            high.
-          * Otherwise, fight.
+        The heuristic (in priority order):
+          1. If health is at or below ``critical_health_threshold``
+             (default 2.0 HP = 1 heart), flee even from a single mob.
+             At this level the next hit will likely kill the player,
+             so fight is never the right choice.
+          2. If there are more than ``max_fightable_mobs`` hostiles in
+             range, flee — even a maxed-out player can't safely take
+             on a swarm.
+          3. If health is below ``flee_health_threshold`` and there's
+             more than one hostile, flee.
+          4. Otherwise, fight.
         """
+        if world.health is not None and world.health <= self._config.critical_health_threshold:
+            return THREAT_FLEE
         if len(mobs) > self._config.max_fightable_mobs:
             return THREAT_FLEE
         if (
@@ -445,3 +466,89 @@ class SelfPreservationLayer:
         _sat, _count, item_id, slot_no = candidates[0]
         # Strip the namespace so the EAT action sees the bare ID
         return item_id.replace("minecraft:", ""), slot_no
+
+    # ── Auto-heal ─────────────────────────────────────────────────
+
+    async def _maybe_auto_heal(self, world: WorldState) -> ActionResult | None:
+        """Auto-heal when health is critically low and a healing item
+        (golden apple, golden carrot, etc.) is in inventory.
+
+        Uses the ``HEAL`` action rather than ``EAT``, which applies
+        regeneration, absorption, and instant-health effects.
+        Skips if no golden apples/golden carrots are in inventory.
+
+        ``enable_auto_heal`` must be True in ``PreservationConfig``
+        (default True).
+        """
+        if world.health is None or world.health >= self._config.health_critical_threshold:
+            return None
+
+        best = self._pick_healing_item(world.inventory)
+        if best is None:
+            return None
+
+        item, slot = best
+        heal = await execute_action(
+            self._mc,
+            ActionType.HEAL,
+            {"heal_item": item, "slot": slot},
+        )
+        if heal.success:
+            self._memory.remember_fact(f"Auto-healed with {item} (health was {world.health}/20)")
+            logger.info("Auto-healed with %s (health was %.1f/20)", item, world.health)
+        return heal
+
+    @staticmethod
+    def _pick_healing_item(inventory: list[InventorySlot]) -> tuple[str, int] | None:
+        """Return (item_id, slot) for the best healing item in inventory.
+
+        Priority: enchanted_golden_apple > golden_apple > golden_carrot.
+        Returns None if no healing item is present.
+        """
+        priority = {
+            "enchanted_golden_apple": 3,
+            "golden_apple": 2,
+            "golden_carrot": 1,
+        }
+        best_priority = -1
+        best_item: str | None = None
+        best_slot = -1
+
+        for slot in inventory:
+            bare = slot.item_id.lower().replace("minecraft:", "")
+            pri = priority.get(bare, -1)
+            if pri > best_priority:
+                best_priority = pri
+                best_item = bare
+                best_slot = slot.slot
+
+        if best_item is None:
+            return None
+        return best_item, best_slot
+
+    # ── Day/night awareness ───────────────────────────────────────
+
+    def _maybe_note_time_of_day(self, world: WorldState) -> None:
+        """Record a memory fact when it's night (time > 13 000 ticks).
+
+        The LLM sees this fact on the next turn and can choose to
+        stay put, find shelter, or adopt more defensive behaviours.
+        Daytime facts are not recorded (the LLM doesn't need reminding
+        that it's daytime — that's the default).
+        """
+        raw = world.time_raw
+        if not raw:
+            return
+        try:
+            ticks = int(raw.strip())
+        except (ValueError, TypeError):
+            return
+
+        # Minecraft day cycle: 0 = dawn, ~6000 = noon, ~13000 = dusk, ~18000 = midnight
+        if 13000 <= ticks <= 24000:
+            self._memory.remember_fact(
+                f"It's night-time (in-game time {ticks}). "
+                "Night is dangerous — hostile mobs spawn in the dark. "
+                "Consider staying in shelter until dawn."
+            )
+            logger.debug("Recorded night-time fact (ticks=%d)", ticks)
