@@ -1002,6 +1002,135 @@ _HOSTILE_MOBS: tuple[str, ...] = (
 )
 
 
+# ── Mob threat levels ────────────────────────────────────────────────────
+# Used by scan_entities to communicate danger to the LLM and by the
+# self-preservation layer to decide which mobs to engage.  Higher
+# threat = more dangerous, more reason to fight back or flee.
+#
+# Levels:
+#   "low"      — slow, weak mobs. Safe to engage solo.
+#   "medium"   — moderate threat. Common hostile mobs.
+#   "high"     — dangerous. Ranged, explosive, or strong melee.
+#   "critical" — run, don't fight (e.g. warden, wither).
+#
+# Mobs not in this table default to "medium" if they're in
+# _HOSTILE_MOBS, or "neutral" if they are not.
+_MOB_THREAT_LEVELS: dict[str, str] = {
+    # Low
+    "zombie": "low",
+    "husk": "low",
+    "drowned": "low",
+    "stray": "low",
+    "bogged": "low",
+    "slime": "low",
+    "magma_cube": "low",
+    "zombified_piglin": "low",
+    # Medium
+    "skeleton": "medium",
+    "spider": "medium",
+    "cave_spider": "medium",
+    "phantom": "medium",
+    "breeze": "medium",
+    "hoglin": "medium",
+    # High
+    "creeper": "high",
+    "witch": "high",
+    "enderman": "high",
+    "piglin": "high",
+    "piglin_brute": "high",
+    "zoglin": "high",
+    "vindicator": "high",
+    "evoker": "high",
+    "ravager": "high",
+    "shulker": "high",
+    "guardian": "high",
+    "elder_guardian": "high",
+    "vex": "high",
+    "wither_skeleton": "high",
+    "blaze": "high",
+    # Critical — flee
+    "warden": "critical",
+    "wither": "critical",
+}
+
+
+# ── Mob blacklist ────────────────────────────────────────────────────────
+# Mobs that the agent should never attack, even if they appear to be
+# hostile.  Most of these are village protectors, tamed animals, or
+# peaceful creatures.  Attacking them in a village would either
+# turn the entire village hostile (iron golems) or just be wrong
+# (villagers, tamed wolves, etc.).
+#
+# The mob_type is the lowercase bare name (no "minecraft:" prefix).
+_MOB_BLACKLIST: frozenset[str] = frozenset(
+    {
+        # Village protectors
+        "iron_golem",
+        "villager",
+        "wandering_trader",
+        # Tamed/friendly animals (wild versions of some are hostile, but
+        # we can't tell from the entity name alone)
+        "wolf",  # tamed wolves are friendly
+        "cat",
+        "parrot",
+        "horse",
+        "donkey",
+        "mule",
+        "llama",
+        "trader_llama",
+        "ocelot",
+        "axolotl",
+        "fox",
+        "bee",  # only hostile if provoked
+        "rabbit",
+        "squid",
+        "glow_squid",
+        "dolphin",
+        "turtle",
+        "frog",
+        "goat",
+        "strider",
+        "armadillo",
+        # Passive farm animals — would be wrong to attack
+        "pig",
+        "cow",
+        "sheep",
+        "chicken",
+        "mooshroom",
+    }
+)
+
+
+def _get_threat_level(mob_type: str) -> str:
+    """Return the threat level for a mob type.
+
+    Strips the ``minecraft:`` namespace.  Falls back to ``"medium"``
+    for unknown hostile mobs and ``"neutral"`` for unknown
+    non-hostile mobs.
+    """
+    bare = mob_type.lower().replace("minecraft:", "")
+    return _MOB_THREAT_LEVELS.get(bare, "medium" if bare in _HOSTILE_MOBS else "neutral")
+
+
+def _is_blacklisted(mob_type: str) -> bool:
+    """Return True if the agent should never attack this mob type."""
+    bare = mob_type.lower().replace("minecraft:", "")
+    return bare in _MOB_BLACKLIST
+
+
+def _should_attack(mob_type: str) -> bool:
+    """Decide whether the agent should attack a given mob type.
+
+    Combines threat level (don't attack critical — too dangerous
+    to even engage) with blacklist (don't attack iron golems,
+    villagers, tamed animals, etc.).  Returns False for blacklisted
+    or critical mobs, True otherwise.
+    """
+    if _is_blacklisted(mob_type):
+        return False
+    return _get_threat_level(mob_type) != "critical"
+
+
 async def _scan_entities(mc: McpqClient, params: dict) -> ActionResult:
     """Detect hostile mobs near the player.
 
@@ -1017,6 +1146,21 @@ async def _scan_entities(mc: McpqClient, params: dict) -> ActionResult:
       - ``mobs``: dict mapping mob type name -> bool (True if present)
       - ``mobs_nearby``: list of mob type names that were detected
         (convenient for the LLM prompt)
+      - ``detailed``: list of dicts with ``{type, threat, should_attack}``
+        for each detected mob.  ``threat`` is one of ``low``,
+        ``medium``, ``high``, ``critical`` (or ``neutral`` for
+        unknown mobs).  ``should_attack`` is False for blacklisted
+        mobs (iron golem, villagers, tamed animals) and critical
+        mobs (warden, wither) — the agent should never engage them.
+      - ``blacklisted``: list of mob types in range that are in
+        the blacklist (iron golem, villager, tamed wolf, etc.).
+        The agent must not attack these under any circumstances —
+        doing so would either turn the entire village hostile or
+        just be wrong.
+      - ``too_dangerous``: list of mob types in range that are too
+        dangerous to engage (warden, wither).  Even though the
+        ``should_attack`` flag is False, the agent needs to know
+        these are present so it can decide to flee.
     """
     try:
         radius = int(params.get("radius", 16))
@@ -1026,6 +1170,14 @@ async def _scan_entities(mc: McpqClient, params: dict) -> ActionResult:
 
     detected: list[str] = []
     presence: dict[str, bool] = {}
+    # Rich per-mob info: type, threat level, should_attack boolean.
+    # Backward compatible: existing code reads `mobs_nearby` (a list
+    # of strings).  New code can read `detailed` for the richer view.
+    detailed: list[dict[str, str | bool]] = []
+    # Mob types that are in range but should NOT be attacked (blacklist).
+    blacklisted: list[str] = []
+    # Mob types that are too dangerous to engage (e.g. warden).
+    too_dangerous: list[str] = []
 
     for mob in _HOSTILE_MOBS:
         try:
@@ -1041,6 +1193,20 @@ async def _scan_entities(mc: McpqClient, params: dict) -> ActionResult:
         presence[mob] = present
         if present:
             detected.append(mob)
+            threat = _get_threat_level(mob)
+            should_attack = _should_attack(mob)
+            detailed.append(
+                {
+                    "type": mob,
+                    "threat": threat,
+                    "should_attack": should_attack,
+                }
+            )
+            if not should_attack:
+                if _is_blacklisted(mob):
+                    blacklisted.append(mob)
+                else:
+                    too_dangerous.append(mob)
 
     msg = (
         f"No hostile mobs within {radius} blocks"
@@ -1055,6 +1221,9 @@ async def _scan_entities(mc: McpqClient, params: dict) -> ActionResult:
             "radius": radius,
             "mobs": presence,
             "mobs_nearby": detected,
+            "detailed": detailed,
+            "blacklisted": blacklisted,
+            "too_dangerous": too_dangerous,
         },
     )
 

@@ -202,15 +202,40 @@ class SelfPreservationLayer:
         mobs: list[str] = scan.data.get("mobs_nearby", [])
         if not mobs:
             return None
+        # Use the detailed list (from PR #9 / context-aware combat) to
+        # pick a target that is actually safe to attack.  The
+        # `should_attack` field is False for blacklisted mobs (iron
+        # golems, villagers, tamed animals) and critical-threat mobs
+        # (warden, wither) — never engage those reflexively.
+        detailed: list[dict] = scan.data.get("detailed", [])
+        attackable = [m for m in detailed if m.get("should_attack", True)]
+        too_dangerous: list[str] = scan.data.get("too_dangerous", [])
+        if not attackable:
+            # Either everything is blacklisted or too dangerous.  If
+            # there's a too-dangerous mob nearby, prefer flee.
+            if too_dangerous and self._config.enable_reflex_flee:
+                return await self._flee(world, too_dangerous, drop)
+            # Otherwise, there's nothing safe to attack — just skip.
+            return None
 
-        # Step 4: threat assessment.
-        verdict = self._evaluate_threat(mobs, world)
+        # Step 4: threat assessment.  Count only ATTACKABLE mobs —
+        # blacklisted ones (iron golems, villagers, tamed animals)
+        # shouldn't count against the threat threshold because
+        # they're not actual aggressors.
+        attackable_types = [m.get("type", "") for m in attackable]
+        verdict = self._evaluate_threat(attackable_types, world)
         if verdict == THREAT_FLEE and self._config.enable_reflex_flee:
-            return await self._flee(world, mobs, drop)
+            return await self._flee(world, attackable_types, drop)
         if self._config.enable_reflex_attack:
             # FIGHT verdict, or FLEE verdict with reflex_flee disabled
             # (in which case we fall back to fight — better than nothing).
-            return await self._attack_nearest(world, mobs, drop)
+            # Use the rich detailed list to pick the highest-threat
+            # attackable target — never the first mob blindly.
+            target = self._pick_target(detailed)
+            if target is None and attackable_types:
+                target = attackable_types[0]
+            if target:
+                return await self._attack_nearest(world, [target], drop)
 
         return None
 
@@ -242,11 +267,18 @@ class SelfPreservationLayer:
         mobs: list[str],
         drop: float,
     ) -> ActionResult | None:
-        """Attack the nearest hostile mob and record the reflex in memory.
+        """Attack the highest-threat hostile mob and record the reflex.
 
         The LLM will see the attack result on the next turn and can
         decide whether to keep fighting or back off.
+
+        ``mobs`` is the simple ``mobs_nearby`` list from the scan
+        result.  We pick the first one — this is the conservative
+        fallback.  Higher-priority callers can pass a richer target
+        list via the :func:`_attack_target` variant.
         """
+        if not mobs:
+            return None
         target = mobs[0]
         attack = await execute_action(
             self._mc,
@@ -262,6 +294,22 @@ class SelfPreservationLayer:
             )
             logger.info("Reflex attack on %s (health dropped %.1f HP)", target, drop)
         return attack
+
+    @staticmethod
+    def _pick_target(detailed: list[dict]) -> str | None:
+        """Pick the best target from the detailed scan_entities list.
+
+        Prefers the highest threat level among the attackable mobs:
+        high > medium > low.  Within the same threat level, picks
+        the first one (stable, deterministic).  Returns None if no
+        attackable mob is in the list.
+        """
+        threat_order = {"high": 0, "medium": 1, "low": 2}
+        candidates = [m for m in detailed if m.get("should_attack", True)]
+        if not candidates:
+            return None
+        candidates.sort(key=lambda m: threat_order.get(m.get("threat", "medium"), 1))
+        return str(candidates[0].get("type", ""))
 
     async def _flee(
         self,

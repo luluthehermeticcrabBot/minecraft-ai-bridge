@@ -91,7 +91,7 @@ You MUST respond with a valid JSON object containing these fields:
 - craft_item: {{"item_type": string, "amount": number}} — give yourself items
 - drop_item: {{"item_type": string, "amount": number}} — drop items
 - attack: {{"entity_type": string, "damage_amount": number (optional, default 4)}} — attack an entity. Use scan_entities first to find nearby hostile mobs, then attack with entity_type set to the mob name. damage_amount is in half-hearts (4 = 2 hearts, 20 = one-shots most mobs).
-- scan_entities: {{"radius": number (optional, default 16, max 16)}} — detect hostile mobs within radius. Returns a list of mob types in range (e.g. zombie, skeleton, creeper).
+- scan_entities: {{"radius": number (optional, default 16, max 16)}} — detect mobs within radius. Returns a list with threat level and should_attack info per mob. Threat levels: low, medium, high, critical. Blacklisted mobs (iron_golem, villager, tamed animals) have should_attack=False and must NEVER be attacked. Critical mobs (warden, wither) have should_attack=False because the threat is too high.
 - scan: {{"radius": number}} — scan surroundings
 - check_time: {{}} — check in-game time
 - check_weather: {{}} — check weather
