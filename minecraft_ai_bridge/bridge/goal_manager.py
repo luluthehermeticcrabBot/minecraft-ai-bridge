@@ -102,6 +102,31 @@ _FALLBACK_PLANS: list[tuple[re.Pattern, str, list[str]]] = [
     ),
     (
         re.compile(
+            r"\b(eat|hungry|starv(e|ing)|starvation|"
+            r"feed\s+yourself|need\s+to\s+eat|appetite|"
+            r"find\s+food|get\s+food|grab\s+food|locate\s+food|"
+            r"cook\s+food|cook\s+some\s+food|make\s+food|"
+            r"bake\s+bread|find\s+bread|get\s+bread|"
+            r"no\s+food|out\s+of\s+food|low\s+on\s+food|"
+            r"get\s+some\s+to\s+eat|find\s+something\s+to\s+eat|"
+            r"make\s+bread|cook\s+meat)\b",
+            re.IGNORECASE,
+        ),
+        "Find and eat food",
+        [
+            "Check hunger with check_hunger",
+            "Check inventory for any existing food items (bread, cooked meat, etc.)",
+            "If food is in inventory, equip and consume it via drop_item or eat the held item",
+            "If no food: scan for nearby animals that can be hunted for food",
+            "Craft a furnace if needed for cooking raw meat",
+            "Cook raw meat (beef, pork, chicken) into cooked food using the furnace",
+            "If no animals nearby, explore until you find a passive mob or village",
+            "Eat the food and recheck hunger — repeat if still below 14/20",
+            "Report new hunger level and any leftover food in inventory",
+        ],
+    ),
+    (
+        re.compile(
             r"villager|\btrader\b|trading|emerald|\bmerchant\b|"
             r"(librarian|cleric|fletcher|fletcher|farmer|priest|blacksmith|weaponsmith|"
             r"toolsmith|butcher|leatherworker|mason|wandering\s+trader)",

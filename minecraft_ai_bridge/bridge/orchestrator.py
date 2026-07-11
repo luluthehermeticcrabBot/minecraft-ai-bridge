@@ -19,6 +19,7 @@ from .chat_commands import ChatCommandHandler
 from .goal_manager import GoalManager
 from .inventory_manager import InventoryManager
 from .memory import AgentMemory
+from .self_preservation import PreservationConfig, SelfPreservationLayer
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +71,10 @@ class Orchestrator:
 
         # Inventory manager (N1)
         self._inventory: InventoryManager | None = None
+
+        # Self-preservation layer — reflex attack + find-food injection
+        # Initialised lazily in _connect() once we have an MC client.
+        self._preservation: SelfPreservationLayer | None = None
 
     # ── Public API ───────────────────────────────────────────────────
 
@@ -194,6 +199,16 @@ class Orchestrator:
         # ── Observe ──────────────────────────────────────────────
         world = await self._observe()
 
+        # ── Self-preservation (reflex attack + find-food injection) ──
+        # Runs after observe, before the LLM thinks.  If the layer
+        # returns an ActionResult, we use it as the action for this
+        # turn and skip the LLM call entirely.  The LLM still sees
+        # the result via the regular last_action_result context on
+        # the NEXT turn.
+        reflex_result: ActionResult | None = None
+        if self._preservation is not None:
+            reflex_result = await self._preservation.evaluate(world)
+
         # ── Build context for LLM ─────────────────────────────────
         context = self._build_context(world)
         if self._verbose:
@@ -229,7 +244,17 @@ class Orchestrator:
             )
 
         # ── Act ───────────────────────────────────────────────────
-        result = await self._act(response)
+        # If the self-preservation layer wants to act, use its result
+        # and skip the LLM-driven action this turn. The reflex result
+        # is treated as if the LLM had decided on it, so the rest of
+        # the bookkeeping (recording, failure tracking, termination
+        # check) runs unchanged.
+        if reflex_result is not None:
+            result = reflex_result
+            response_action = result.action.value
+        else:
+            result = await self._act(response)
+            response_action = response.action
 
         # Track consecutive failures — count both action failures and exceptions
         if result.success:
@@ -239,7 +264,7 @@ class Orchestrator:
 
         # ── Record ────────────────────────────────────────────────
         self._memory.record_action(
-            response.action,
+            response_action,
             {
                 "success": result.success,
                 "message": result.message,
@@ -251,7 +276,7 @@ class Orchestrator:
             logger.info("Result: %s — %s", "✓" if result.success else "✗", result.message)
 
         # ── Check termination ─────────────────────────────────────
-        if response.action == "done" and result.success:
+        if response_action == "done" and result.success:
             self._goals.mark_current_complete()
             if self._goals.is_complete:
                 return True
@@ -457,6 +482,14 @@ class Orchestrator:
             logger.debug("Initial inventory refresh failed (expected if player just spawned)")
 
         self._cmd_handler = ChatCommandHandler(self)
+
+        # Self-preservation layer (reflex attack + find-food injection)
+        self._preservation = SelfPreservationLayer(
+            mc=self._mc,
+            goal_manager=self._goals,
+            memory=self._memory,
+            config=PreservationConfig(),
+        )
 
         # Persist the goal in memory database (N3)
         root_desc = self._goals.root_description
