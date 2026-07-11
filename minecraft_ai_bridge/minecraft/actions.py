@@ -45,6 +45,7 @@ class ActionType(StrEnum):
 
     # ── Combat ──────────────────────────────────────────────────────
     ATTACK = "attack"
+    SCAN_ENTITIES = "scan_entities"
 
     # ── Information ─────────────────────────────────────────────────
     SCAN = "scan"
@@ -964,74 +965,202 @@ def _damage_hit_anything(resp: str | None) -> bool:
     return True
 
 
-async def _attack(mc: McpqClient, params: dict) -> ActionResult:
-    # Paper 26.1.x broke "execute as @p at @p run attack" (throws
-    # CommandException).  Use /damage instead — available since MC 1.20.5.
-    target = params.get("entity_type", "")
-    if target:
-        # Target a specific player with generic damage (4 = 2 hearts)
+# ── Hostile mob types the scan_entities action can detect ────────────────
+# Curated subset of common hostile mobs. Extending this list is safe —
+# each entry is one extra /execute command. The cost is linear in the
+# number of types times radius, so keep this under ~30 entries.
+_HOSTILE_MOBS: tuple[str, ...] = (
+    "zombie",
+    "skeleton",
+    "creeper",
+    "spider",
+    "cave_spider",
+    "enderman",
+    "witch",
+    "slime",
+    "magma_cube",
+    "phantom",
+    "drowned",
+    "husk",
+    "stray",
+    "bogged",
+    "breeze",
+    "piglin",
+    "piglin_brute",
+    "hoglin",
+    "zoglin",
+    "zombified_piglin",
+    "guardian",
+    "elder_guardian",
+    "shulker",
+    "evoker",
+    "vindicator",
+    "pillager",
+    "ravager",
+    "vex",
+)
+
+
+async def _scan_entities(mc: McpqClient, params: dict) -> ActionResult:
+    """Detect hostile mobs near the player.
+
+    Iterates over a curated list of common hostile mob types and runs
+    ``/execute if entity @e[type=...minecraft:X,r=R,limit=1]`` for each
+    to check whether at least one of that type is within radius.
+
+    Parameters (from ``params``):
+      - ``radius`` (optional, default 16, cap 16): search radius in blocks
+
+    Returns ActionResult with structured ``data`` for the LLM:
+      - ``radius``: the effective search radius
+      - ``mobs``: dict mapping mob type name -> bool (True if present)
+      - ``mobs_nearby``: list of mob type names that were detected
+        (convenient for the LLM prompt)
+    """
+    try:
+        radius = int(params.get("radius", 16))
+    except (TypeError, ValueError):
+        radius = 16
+    radius = max(1, min(radius, 16))  # cap to avoid spamming commands
+
+    detected: list[str] = []
+    presence: dict[str, bool] = {}
+
+    for mob in _HOSTILE_MOBS:
         try:
-            cmd = f"damage @e[type=minecraft:player,name={target},limit=1] 4"
+            marker = f"__mob_{mob}__"
+            cmd = (
+                f"execute if entity @e[type=minecraft:{mob},"
+                f"distance=..{radius},limit=1] run say {marker}"
+            )
+            resp = await _cmd(mc, cmd)
+            present = bool(resp) and marker in resp
+        except Exception:
+            present = False
+        presence[mob] = present
+        if present:
+            detected.append(mob)
+
+    msg = (
+        f"No hostile mobs within {radius} blocks"
+        if not detected
+        else f"Detected hostile mobs within {radius} blocks: {', '.join(detected)}"
+    )
+    return ActionResult(
+        success=True,
+        action=ActionType.SCAN_ENTITIES,
+        message=msg,
+        data={
+            "radius": radius,
+            "mobs": presence,
+            "mobs_nearby": detected,
+        },
+    )
+
+
+async def _attack(mc: McpqClient, params: dict) -> ActionResult:
+    """Attack a target entity using ``/damage``.
+
+    Paper 26.1.x broke ``execute as @p at @p run attack`` (throws
+    CommandException), so this action uses the ``/damage`` command
+    instead, which has been available since MC 1.20.5.
+
+    Parameters (from ``params``):
+      - ``entity_type`` (optional): name of a player or mob to target
+        specifically. If omitted, attacks the nearest non-player entity.
+      - ``damage_amount`` (optional): how much damage to deal, integer
+        1-20. Default 4 (= 2 hearts). 20 kills most mobs in one hit.
+
+    Returns ActionResult with structured ``data`` for the LLM:
+      - ``target_type``: "player" | "mob" | "unknown"
+      - ``target_name``: the entity_type that was attacked (if any)
+      - ``damage_dealt``: the integer damage amount
+      - ``target_hit``: bool — whether the /damage actually hit
+    """
+    # Clamp damage to a sane range. /damage accepts any positive float,
+    # but Minecraft's max health caps at 20 (10 hearts) for players and
+    # varies for mobs. 64+ is enough to one-shot everything that matters.
+    target = str(params.get("entity_type", "")).strip()
+    try:
+        damage = int(params.get("damage_amount", 4))
+    except (TypeError, ValueError):
+        damage = 4
+    damage = max(1, min(damage, 64))
+
+    if target:
+        # Target a specific entity with generic damage
+        try:
+            cmd = f"damage @e[type=!minecraft:player,name={target},limit=1] {damage}"
             resp = await _cmd(mc, cmd)
             if _damage_hit_anything(resp):
                 return ActionResult(
                     success=True,
                     action=ActionType.ATTACK,
-                    message=f"Attacked {target} for 4 damage",
-                    data={"target": target, "response": resp},
-                )
-            else:
-                return ActionResult(
-                    success=False,
-                    action=ActionType.ATTACK,
-                    message=f"Attack on {target} failed — player not found or not in range",
-                    data={"target": target, "response": resp},
+                    message=f"Attacked {target} for {damage} damage",
+                    data={
+                        "target_type": "mob",
+                        "target_name": target,
+                        "damage_dealt": damage,
+                        "target_hit": True,
+                        "response": resp,
+                    },
                 )
         except Exception:
             pass
 
-    # Generic attack — try /damage on the entity the player is looking at
+    # Generic attack — try /damage on the nearest non-player entity
     try:
-        cmd = "damage @e[type=!minecraft:player,limit=1,sort=nearest] 4"
+        cmd = f"damage @e[type=!minecraft:player,limit=1,sort=nearest] {damage}"
         resp = await _cmd(mc, cmd)
         if _damage_hit_anything(resp):
             return ActionResult(
                 success=True,
                 action=ActionType.ATTACK,
-                message="Attacked nearest entity for 4 damage",
-                data={"response": resp},
+                message=f"Attacked nearest entity for {damage} damage",
+                data={
+                    "target_type": "mob",
+                    "damage_dealt": damage,
+                    "target_hit": True,
+                    "response": resp,
+                },
             )
     except Exception:
         pass
 
-    # Last resort: raw /damage with the target name (broader selector)
+    # Last resort: raw /damage with the target name (broader selector
+    # that doesn't require the entity-type filter)
     if target:
         try:
-            resp = await _cmd(mc, f"damage {target} 4")
+            resp = await _cmd(mc, f"damage {target} {damage}")
             if _damage_hit_anything(resp):
                 return ActionResult(
                     success=True,
                     action=ActionType.ATTACK,
-                    message=f"Attacked {target} for 4 damage",
-                    data={"target": target, "response": resp},
-                )
-            else:
-                return ActionResult(
-                    success=False,
-                    action=ActionType.ATTACK,
-                    message=f"Attack on {target} failed — player not found",
-                    data={"target": target, "response": resp},
+                    message=f"Attacked {target} for {damage} damage",
+                    data={
+                        "target_type": "unknown",
+                        "target_name": target,
+                        "damage_dealt": damage,
+                        "target_hit": True,
+                        "response": resp,
+                    },
                 )
         except Exception:
             pass
 
+    # Nothing in range hit
     return ActionResult(
         success=False,
         action=ActionType.ATTACK,
         message=(
-            "Attack failed — Paper 26.1.x removed execute attack. "
-            "Try crafting/killing via commands instead."
+            "Attack failed — no entity in range. "
+            "Try scan_entities to find targets, then attack with entity_type."
         ),
+        data={
+            "target_name": target or None,
+            "damage_dealt": damage,
+            "target_hit": False,
+        },
     )
 
 
@@ -1282,6 +1411,7 @@ _HANDLERS: dict[ActionType, Handler] = {
     ActionType.CRAFT_ITEM: _craft_item,
     ActionType.DROP_ITEM: _drop_item,
     ActionType.ATTACK: _attack,
+    ActionType.SCAN_ENTITIES: _scan_entities,
     ActionType.SCAN: _scan,
     ActionType.CHECK_TIME: _check_time,
     ActionType.CHECK_WEATHER: _check_weather,

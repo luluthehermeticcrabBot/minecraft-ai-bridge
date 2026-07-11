@@ -90,11 +90,13 @@ You MUST respond with a valid JSON object containing these fields:
 - equip_item: {{"slot": number}} — equip item from inventory slot
 - craft_item: {{"item_type": string, "amount": number}} — give yourself items
 - drop_item: {{"item_type": string, "amount": number}} — drop items
-- attack: {{"entity_type": string}} — attack a specific player/entity (use entity_type, e.g. "LuLuNyam")
+- attack: {{"entity_type": string, "damage_amount": number (optional, default 4)}} — attack an entity. Use scan_entities first to find nearby hostile mobs, then attack with entity_type set to the mob name. damage_amount is in half-hearts (4 = 2 hearts, 20 = one-shots most mobs).
+- scan_entities: {{"radius": number (optional, default 16, max 16)}} — detect hostile mobs within radius. Returns a list of mob types in range (e.g. zombie, skeleton, creeper).
 - scan: {{"radius": number}} — scan surroundings
 - check_time: {{}} — check in-game time
 - check_weather: {{}} — check weather
 - check_health: {{}} — check health
+- check_hunger: {{}} — check hunger (food level, 0-20)
 - check_position: {{}} — check current position
 - list_players: {{}} — list online players
 - chat: {{"message": string}} — send a chat message

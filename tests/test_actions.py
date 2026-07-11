@@ -283,6 +283,59 @@ class TestCombat:
         result = await execute_action(mock_mc, ActionType.ATTACK, {"entity_type": "TestPlayer"})
         assert result.success is True
 
+    async def test_attack_custom_damage(self, mock_mc):
+        """Custom damage_amount should be reflected in the response."""
+        result = await execute_action(
+            mock_mc,
+            ActionType.ATTACK,
+            {"entity_type": "zombie", "damage_amount": 20},
+        )
+        assert result.success is True
+        # The damage value should be in the data field, not necessarily in
+        # the message (mock doesn't echo it back).
+        assert result.data.get("damage_dealt") == 20
+
+    async def test_attack_clamps_damage(self, mock_mc):
+        """Damage values outside [1, 64] are clamped to the valid range."""
+        result = await execute_action(mock_mc, ActionType.ATTACK, {"damage_amount": 999})
+        assert result.data.get("damage_dealt") == 64
+        result = await execute_action(mock_mc, ActionType.ATTACK, {"damage_amount": -5})
+        assert result.data.get("damage_dealt") == 1
+
+    async def test_attack_target_hit_field(self, mock_mc):
+        """The target_hit data field should be True on a successful attack."""
+        result = await execute_action(mock_mc, ActionType.ATTACK, {})
+        assert result.data.get("target_hit") is True
+
+    async def test_scan_entities_none_nearby(self, mock_mc):
+        """With no hostile mobs configured, scan_entities reports none."""
+        result = await execute_action(mock_mc, ActionType.SCAN_ENTITIES, {})
+        assert result.success is True
+        assert result.data["mobs_nearby"] == []
+        assert "no hostile mobs" in result.message.lower()
+
+    async def test_scan_entities_with_mobs(self, mock_mc):
+        """Configured hostile mobs should be detected by scan_entities."""
+        mock_mc.set_hostile_mobs(["zombie", "skeleton", "creeper"])
+        result = await execute_action(mock_mc, ActionType.SCAN_ENTITIES, {})
+        assert result.success is True
+        detected = result.data["mobs_nearby"]
+        assert "zombie" in detected
+        assert "skeleton" in detected
+        assert "creeper" in detected
+        assert "enderman" not in detected  # not configured
+        assert "zombie" in result.message.lower()
+
+    async def test_scan_entities_custom_radius(self, mock_mc):
+        """Custom radius is reflected in the response."""
+        result = await execute_action(mock_mc, ActionType.SCAN_ENTITIES, {"radius": 8})
+        assert result.data["radius"] == 8
+
+    async def test_scan_entities_caps_radius(self, mock_mc):
+        """Radius above 16 is capped to avoid command spam."""
+        result = await execute_action(mock_mc, ActionType.SCAN_ENTITIES, {"radius": 100})
+        assert result.data["radius"] == 16
+
     async def test_damage_hit_anything(self):
         assert _damage_hit_anything("Damaged 1 entity") is True
         assert _damage_hit_anything("Hurt entity") is True
