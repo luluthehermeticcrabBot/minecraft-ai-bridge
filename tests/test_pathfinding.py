@@ -51,8 +51,9 @@ class TestPathfinderFindPath:
         # Check that no waypoint is inside the wall
         for wx, wz in path:
             ix, iz = int(wx), int(wz)
-            assert not (5 <= ix <= 6 and 3 <= iz <= 8), \
+            assert not (5 <= ix <= 6 and 3 <= iz <= 8), (
                 f"Waypoint ({wx:.1f}, {wz:.1f}) is inside the wall"
+            )
 
     @pytest.mark.asyncio
     async def test_no_path_impassable(self) -> None:
@@ -91,8 +92,7 @@ class TestPathfinderFindPath:
         for wx, wz in path:
             ix, iz = int(wx), int(wz)
             below = await mc.get_block(ix, 64, iz)
-            assert "lava" not in below, \
-                f"Waypoint ({wx:.1f}, {wz:.1f}) has lava below"
+            assert "lava" not in below, f"Waypoint ({wx:.1f}, {wz:.1f}) has lava below"
 
     @pytest.mark.asyncio
     async def test_mcpq_failure_handling(self) -> None:

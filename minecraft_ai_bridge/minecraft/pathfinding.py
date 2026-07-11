@@ -25,19 +25,20 @@ from .mc_api import McpqClient
 logger = logging.getLogger(__name__)
 
 # Default pathfinder limits
-_MAX_NODES = 500          # max nodes to explore before giving up
-_SCAN_BATCH_SIZE = 25     # concurrent getBlock calls per batch
+_MAX_NODES = 500  # max nodes to explore before giving up
+_SCAN_BATCH_SIZE = 25  # concurrent getBlock calls per batch
 _STEP_COST = 1.0
 _DIAG_COST = 1.414
 
 # Maximum Y difference the pathfinder will try to climb in a single step
 _MAX_STEP_UP = 1
-_MAX_STEP_DOWN = 3        # max safe drop (no fall damage below 3 blocks)
+_MAX_STEP_DOWN = 3  # max safe drop (no fall damage below 3 blocks)
 
 
 @dataclass(frozen=True)
 class Node:
     """Immutable node for the A* priority queue."""
+
     x: int
     z: int
     g: float  # cost from start
@@ -97,7 +98,7 @@ class Pathfinder:
         gx, gz = int(goal_x), int(goal_z)
 
         # Clamp to a reasonable bounding box
-        min_x = min(sx, gx) - 8   # margin around the corridor
+        min_x = min(sx, gx) - 8  # margin around the corridor
         max_x = max(sx, gx) + 8
         min_z = min(sz, gz) - 8
         max_z = max(sz, gz) + 8
@@ -120,7 +121,13 @@ class Pathfinder:
 
         logger.info(
             "Pathfinding corridor: (%d,%d)→(%d,%d)  grid %d×%d = %d cells",
-            sx, sz, gx, gz, width, height, width * height,
+            sx,
+            sz,
+            gx,
+            gz,
+            width,
+            height,
+            width * height,
         )
 
         # Determine Y-level
@@ -133,7 +140,11 @@ class Pathfinder:
 
         # Scan walkability grid
         walkable, y_base = await self._scan_grid(
-            min_x, max_x, min_z, max_z, y_level,
+            min_x,
+            max_x,
+            min_z,
+            max_z,
+            y_level,
         )
         if walkable is None:
             return None
@@ -146,8 +157,14 @@ class Pathfinder:
 
         # Run A*
         path = self._astar(
-            walkable, width, min_x, min_z,
-            sx_clamped, sz_clamped, gx_clamped, gz_clamped,
+            walkable,
+            width,
+            min_x,
+            min_z,
+            sx_clamped,
+            sz_clamped,
+            gx_clamped,
+            gz_clamped,
         )
 
         if path is None:
@@ -164,8 +181,10 @@ class Pathfinder:
 
     async def _scan_grid(
         self,
-        min_x: int, max_x: int,
-        min_z: int, max_z: int,
+        min_x: int,
+        max_x: int,
+        min_z: int,
+        max_z: int,
         y_level: int,
     ) -> tuple[dict[tuple[int, int], bool], int] | tuple[None, None]:
         """Scan a rectangular area and return a walkability map.
@@ -197,8 +216,10 @@ class Pathfinder:
 
     async def _scan_at_y(
         self,
-        min_x: int, max_x: int,
-        min_z: int, max_z: int,
+        min_x: int,
+        max_x: int,
+        min_z: int,
+        max_z: int,
         y: int,
     ) -> dict[tuple[int, int], bool] | None:
         """Scan the grid at a fixed Y and return walkability."""
@@ -216,7 +237,7 @@ class Pathfinder:
 
         try:
             for i in range(0, len(coords), self._batch_size):
-                batch = coords[i:i + self._batch_size]
+                batch = coords[i : i + self._batch_size]
                 # Fire all 3 queries concurrently for the batch
                 heads = await asyncio.gather(
                     *(self._safe_get_block(x, y + 1, z) for x, y, z in batch),
@@ -275,9 +296,12 @@ class Pathfinder:
         self,
         walkable: dict[tuple[int, int], bool],
         grid_width: int,
-        offset_x: int, offset_z: int,
-        start_x: int, start_z: int,
-        goal_x: int, goal_z: int,
+        offset_x: int,
+        offset_z: int,
+        start_x: int,
+        start_z: int,
+        goal_x: int,
+        goal_z: int,
     ) -> list[tuple[int, int]] | None:
         """A* search on the pre-computed walkability grid.
 
@@ -315,8 +339,14 @@ class Pathfinder:
 
         # 8-directional neighbours
         neighbours = [
-            (1, 0), (-1, 0), (0, 1), (0, -1),       # cardinal
-            (1, 1), (1, -1), (-1, 1), (-1, -1),      # diagonal
+            (1, 0),
+            (-1, 0),
+            (0, 1),
+            (0, -1),  # cardinal
+            (1, 1),
+            (1, -1),
+            (-1, 1),
+            (-1, -1),  # diagonal
         ]
 
         while open_set and nodes_explored < self._max_nodes:
@@ -372,8 +402,10 @@ class Pathfinder:
 
 async def find_walk_path(
     mc: McpqClient,
-    start_x: float, start_z: float,
-    goal_x: float, goal_z: float,
+    start_x: float,
+    start_z: float,
+    goal_x: float,
+    goal_z: float,
     y_level: int | None = None,
 ) -> list[tuple[float, float]] | None:
     """Convenience wrapper: create a Pathfinder and find a path."""
