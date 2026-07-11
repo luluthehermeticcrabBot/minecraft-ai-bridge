@@ -129,6 +129,8 @@ class MockMcpqClient:
         }
         if "Health" in self._player_nbt:
             info["health"] = self._player_nbt["Health"]
+        if "foodLevel" in self._player_nbt:
+            info["food"] = self._player_nbt["foodLevel"]
         return info
 
     async def teleport_player(self, x: float, y: float, z: float) -> None:
@@ -164,6 +166,10 @@ class MockMcpqClient:
             if "Health" in self._player_nbt:
                 return f"Health: {self._player_nbt['Health']}d"
             return "Health: 20.0d"
+        if "foodlevel" in cmd and ("entity @p" in cmd or "entity aibot" in cmd):
+            if "foodLevel" in self._player_nbt:
+                return f"{self._player_nbt['foodLevel']}"
+            return "20"
         if "inventory" in cmd and ("entity @p" in cmd or "entity aibot" in cmd):
             if not self._inventory:
                 return "Inventory: []"

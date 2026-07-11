@@ -162,6 +162,10 @@ def format_state(state: dict) -> str:
     if health is not None:
         parts.append(f"Health: {health}/20")
 
+    hunger = state.get("hunger")
+    if hunger is not None:
+        parts.append(f"Hunger: {hunger}/20")
+
     time_raw = state.get("time_raw", "")
     if time_raw:
         parts.append(f"Time: {time_raw}")
