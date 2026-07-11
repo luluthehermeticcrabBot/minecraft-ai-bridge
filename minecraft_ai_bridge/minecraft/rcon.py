@@ -41,7 +41,7 @@ class RCONAuthError(RCONError):
     """Authentication failed."""
 
 
-class RCONDisconnected(RCONError):
+class RCONDisconnectedError(RCONError):
     """Connection lost."""
 
 
@@ -97,7 +97,7 @@ class RCONClient:
                 self._connected = True
                 logger.info("Connected to %s:%d", self.host, self.port)
                 return
-            except (OSError, asyncio.TimeoutError) as exc:
+            except (TimeoutError, OSError) as exc:
                 last_error = exc
                 logger.warning(
                     "Connection attempt %d/%d failed: %s",
@@ -135,7 +135,7 @@ class RCONClient:
     async def command(self, cmd: str) -> str:
         """Send a command and return the server response text."""
         if not self._connected:
-            raise RCONDisconnected("Not connected to server")
+            raise RCONDisconnectedError("Not connected to server")
 
         # Truncate command if too long
         if len(cmd.encode("utf-8")) > _MAX_PAYLOAD:
@@ -180,7 +180,7 @@ class RCONClient:
             await self._writer.drain()
         except (OSError, ConnectionResetError) as exc:
             self._connected = False
-            raise RCONDisconnected(f"Write failed: {exc}") from exc
+            raise RCONDisconnectedError(f"Write failed: {exc}") from exc
 
         return await self._read_response(req_id)
 
@@ -196,10 +196,10 @@ class RCONClient:
         while remaining > 0:
             time_left = deadline - time.monotonic()
             if time_left <= 0:
-                raise asyncio.TimeoutError()
+                raise TimeoutError()
             try:
                 chunk = await asyncio.wait_for(self._reader.read(remaining), timeout=time_left)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 raise
             if not chunk:
                 raise ConnectionResetError("Connection closed while reading")
@@ -210,20 +210,20 @@ class RCONClient:
     async def _read_response(self, expected_id: int, timeout: float = 15.0) -> RCONPacket:
         """Read and validate the response packet.
 
-        Raises ``RCONDisconnected`` on timeout or connection loss.
+        Raises ``RCONDisconnectedError`` on timeout or connection loss.
         """
         assert self._reader is not None
 
         try:
             header = await self._read_bytes(8, timeout=timeout)
-        except (asyncio.TimeoutError, TimeoutError):
+        except TimeoutError:
             self._connected = False
-            raise RCONDisconnected(
+            raise RCONDisconnectedError(
                 f"Response timeout ({timeout}s) — is RCON enabled on the server?"
-            )
+            ) from None
         except (ConnectionResetError, OSError) as exc:
             self._connected = False
-            raise RCONDisconnected(f"Read failed: {exc}") from exc
+            raise RCONDisconnectedError(f"Read failed: {exc}") from exc
 
         length, req_id = struct.unpack("<ii", header)
 
@@ -253,7 +253,7 @@ class RCONClient:
                     break
                 # Some servers send follow-up packets; we merge text if present.
                 payload += extra.rstrip(b"\x00").decode("utf-8", errors="replace")
-        except (asyncio.TimeoutError, TimeoutError):
+        except TimeoutError:
             pass  # no more data — normal
 
         return RCONPacket(request_id=req_id, ptype=ptype, payload=payload)

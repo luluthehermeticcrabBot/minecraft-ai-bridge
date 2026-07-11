@@ -73,7 +73,9 @@ def _build_parser() -> argparse.ArgumentParser:
         "--max-iterations",
         type=int,
         default=None,
-        help="Maximum think-act-observe turns before stopping (default: config value, typically 100)",
+        help=(
+            "Maximum think-act-observe turns before stopping (default: config value, typically 100)"
+        ),
     )
     parser.add_argument(
         "--model",

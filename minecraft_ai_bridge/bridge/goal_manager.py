@@ -4,7 +4,6 @@ and track progress through the task tree.
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 from typing import Any
@@ -103,10 +102,10 @@ _FALLBACK_PLANS: list[tuple[re.Pattern, str, list[str]]] = [
         re.compile(r"teleport|coordinate|tp|move.*to|go.*to|travel", re.IGNORECASE),
         "Teleport to coordinates",
         [
-            f"Identify the target coordinates from the goal",
-            f"Teleport directly to the target coordinates",
-            f"Confirm arrival by checking position",
-            f"Proceed with remaining goal instructions at the destination",
+            "Identify the target coordinates from the goal",
+            "Teleport directly to the target coordinates",
+            "Confirm arrival by checking position",
+            "Proceed with remaining goal instructions at the destination",
         ],
     ),
     (
@@ -369,7 +368,7 @@ class GoalManager:
         if not self._root.sub_goals:
             lines.append("Status: in progress")
             return "\n".join(lines)
-        for i, sg in enumerate(self._root.sub_goals, 1):
+        for _i, sg in enumerate(self._root.sub_goals, 1):
             status = "✓" if sg.completed else "○"
             active = " ← CURRENT" if sg is self._current else ""
             lines.append(f"  {status} {sg.description}{active}")

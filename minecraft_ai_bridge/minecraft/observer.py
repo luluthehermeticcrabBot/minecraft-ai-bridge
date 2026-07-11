@@ -9,6 +9,7 @@ The observer provides the LLM with a high-level view of the world:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from dataclasses import dataclass, field
 from typing import Any
@@ -103,14 +104,12 @@ class Observer:
 
         # Best-effort biome detection
         if state.position:
-            try:
+            with contextlib.suppress(Exception):
                 state.biome = await self._mc.get_biome(
                     int(state.position[0]),
                     int(state.position[1]),
                     int(state.position[2]),
                 )
-            except Exception:
-                pass
 
         return state
 

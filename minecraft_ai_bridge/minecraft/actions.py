@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from .mc_api import McpqClient
@@ -17,7 +17,7 @@ from .mc_api import McpqClient
 logger = logging.getLogger(__name__)
 
 
-class ActionType(str, Enum):
+class ActionType(StrEnum):
     """Every action the LLM can take.  Keep this list concise so the
     LLM's action space stays manageable."""
 

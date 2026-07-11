@@ -5,8 +5,6 @@ from __future__ import annotations
 import os
 import tempfile
 
-import pytest
-
 from minecraft_ai_bridge.bridge.memory import AgentMemory
 from minecraft_ai_bridge.llm.models import Role
 
