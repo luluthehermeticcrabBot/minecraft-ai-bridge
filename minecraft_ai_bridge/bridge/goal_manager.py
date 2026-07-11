@@ -102,6 +102,50 @@ _FALLBACK_PLANS: list[tuple[re.Pattern, str, list[str]]] = [
     ),
     (
         re.compile(
+            r"\b(eat|hungry|starv(e|ing)|starvation|"
+            r"feed\s+yourself|need\s+to\s+eat|appetite|"
+            r"find\s+food|get\s+food|grab\s+food|locate\s+food|"
+            r"cook\s+food|cook\s+some\s+food|make\s+food|"
+            r"bake\s+bread|find\s+bread|get\s+bread|"
+            r"no\s+food|out\s+of\s+food|low\s+on\s+food|"
+            r"get\s+some\s+to\s+eat|find\s+something\s+to\s+eat|"
+            r"make\s+bread|cook\s+meat)\b",
+            re.IGNORECASE,
+        ),
+        "Find and eat food",
+        [
+            "Check hunger with check_hunger",
+            "Check inventory for any existing food items (bread, cooked meat, etc.)",
+            "If food is in inventory, equip and consume it via drop_item or eat the held item",
+            "If no food: scan for nearby animals that can be hunted for food",
+            "Craft a furnace if needed for cooking raw meat",
+            "Cook raw meat (beef, pork, chicken) into cooked food using the furnace",
+            "If no animals nearby, explore until you find a passive mob or village",
+            "Eat the food and recheck hunger — repeat if still below 14/20",
+            "Report new hunger level and any leftover food in inventory",
+        ],
+    ),
+    (
+        re.compile(
+            r"\b(flee|escape|retreat|run\s+away|get\s+away|"
+            r"get\s+to\s+safety|find\s+shelter|hide|"
+            r"out\s+numbered|outmatched)\b",
+            re.IGNORECASE,
+        ),
+        "Flee to safety",
+        [
+            "Scan surroundings with scan_entities to identify hostile mobs",
+            "Identify the direction AWAY from the hostiles (opposite vector)",
+            "Sprint 10+ blocks in that direction (sprint action)",
+            "Once at a safe distance, scan again — if hostiles still nearby, sprint further",
+            "Look for shelter: a cave entrance, a small structure, or elevated terrain",
+            "Once safe (no hostiles in radius 16), pause and recheck position",
+            "Check health and consider healing if golden apples are in inventory",
+            "Resume the original task once the threat has passed",
+        ],
+    ),
+    (
+        re.compile(
             r"villager|\btrader\b|trading|emerald|\bmerchant\b|"
             r"(librarian|cleric|fletcher|fletcher|farmer|priest|blacksmith|weaponsmith|"
             r"toolsmith|butcher|leatherworker|mason|wandering\s+trader)",

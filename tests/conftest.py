@@ -37,6 +37,7 @@ class MockMcpqClient:
         self._next_get_biome: str | Exception = "plains"
         self._chat_events_backlog: list[Any] = []
         self._hostile_mobs: list[str] = []
+        self._hurt_by_entity: bool = True  # default: yes, was hurt by an entity
 
     # ── Pre-configuration helpers ─────────────────────────────────────
 
@@ -78,6 +79,15 @@ class MockMcpqClient:
         entity @e[type=minecraft:X,...]`` queries.
         """
         self._hostile_mobs: list[str] = list(mob_types)
+
+    def set_hurt_by_entity(self, was_hurt_by_entity: bool) -> None:
+        """Configure whether the player's last damage came from an entity.
+
+        The mock's ``_run_command_blocking`` checks this flag when
+        responding to ``/data get entity @p LastHurtByEntity``.
+        Default is True (most recent damage was from a mob).
+        """
+        self._hurt_by_entity = bool(was_hurt_by_entity)
 
     # ── Assertions ────────────────────────────────────────────────────
 
@@ -143,6 +153,16 @@ class MockMcpqClient:
             info["food"] = self._player_nbt["foodLevel"]
         return info
 
+    async def get_hurt_by_entity(self) -> bool:
+        """Return whether the player's last damage came from an entity.
+
+        Reads the internal ``_hurt_by_entity`` flag (set by
+        ``set_hurt_by_entity``) to match what the real
+        :meth:`McpqClient.get_hurt_by_entity` returns when parsing
+        the ``/data get entity @p LastHurtByEntity`` NBT response.
+        """
+        return getattr(self, "_hurt_by_entity", True)
+
     async def teleport_player(self, x: float, y: float, z: float) -> None:
         self._pos = (x, y, z)
         self._command_log.append(f"teleport to ({x}, {y}, {z})")
@@ -176,6 +196,10 @@ class MockMcpqClient:
             if "Health" in self._player_nbt:
                 return f"Health: {self._player_nbt['Health']}d"
             return "Health: 20.0d"
+        if "lasthur" in cmd and "entity" in cmd:
+            if getattr(self, "_hurt_by_entity", True):
+                return "AIBot has the following entity data: [I;1234567890,0,0,0]"
+            return "No entity was found"
         if "foodlevel" in cmd and ("entity @p" in cmd or "entity aibot" in cmd):
             if "foodLevel" in self._player_nbt:
                 return f"{self._player_nbt['foodLevel']}"
