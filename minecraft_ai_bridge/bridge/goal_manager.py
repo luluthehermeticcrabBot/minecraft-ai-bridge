@@ -17,7 +17,109 @@ logger = logging.getLogger(__name__)
 # ── Hardcoded fallback decompositions for common goals ────────────────
 # When the LLM fails to decompose (returns nothing or non-JSON), these
 # keyword-matched plans provide a sensible step-by-step breakdown.
+#
+# Ordering matters: the first matching pattern wins. The most specific
+# patterns (nether portal, end portal, redstone, animal farm, villager
+# trading) are placed FIRST so they beat the more generic "build", "farm",
+# and "mine" patterns when a goal contains both keywords (e.g. "build a
+# nether portal" should match the nether plan, not the generic build plan).
 _FALLBACK_PLANS: list[tuple[re.Pattern, str, list[str]]] = [
+    (
+        re.compile(
+            r"nether\s+portal|\bnether\b|netherrack|\bhell\b|"
+            r"build.*portal|portal.*nether|\bblaze\s+rod|go\s+to\s+hell",
+            re.IGNORECASE,
+        ),
+        "Build a nether portal",
+        [
+            "Check inventory for diamonds, iron ingots, and flint",
+            "Craft a diamond pickaxe if needed (required to mine obsidian)",
+            "Mine or locate 10-14 obsidian blocks (diamond pickaxe required)",
+            "Find a flat open area to build the portal",
+            "Build the obsidian frame: 4 wide x 5 tall rectangle with hollow center",
+            "Use flint and steel to light the inside of the portal",
+            "Step into the portal to travel to the Nether",
+            "Report portal activation and current location",
+        ],
+    ),
+    (
+        re.compile(
+            r"\bend\s+portal|ender\s+dragon|\bthe\s+end\b|enderman|"
+            r"end\s+stone|eyes?\s+of\s+ender|stronghold",
+            re.IGNORECASE,
+        ),
+        "Activate the End portal",
+        [
+            "Check inventory for ender pearls and blaze powder",
+            "Craft eyes of ender by combining ender pearls and blaze powder (12 needed)",
+            "Throw an eye of ender and follow its trajectory toward the stronghold",
+            "Travel to the stronghold location and dig/staircase down to find the entrance",
+            "Navigate through the stronghold to locate the End portal room",
+            "Place an eye of ender in each empty portal frame slot (12 frames total)",
+            "Enter the activated End portal",
+            "Defeat the Ender Dragon (combat loop) or report progress",
+        ],
+    ),
+    (
+        re.compile(
+            r"redstone|piston|repeater|comparator|automation|"
+            r"redstone\s+(lamp|circuit|wire|door|clock|torch)",
+            re.IGNORECASE,
+        ),
+        "Build a redstone contraption",
+        [
+            "Check inventory for redstone dust, repeaters, pistons, and a lever or button",
+            "Craft any missing redstone components",
+            "Choose a simple circuit: pulse generator, 2x2 piston door, or redstone lamp",
+            "Clear and flatten a 5x5 area for the build",
+            "Place redstone dust in the wiring pattern",
+            "Place repeaters as needed for timing",
+            "Place the input device (lever, button, or pressure plate)",
+            "Place the output device (piston, lamp, or door)",
+            "Test the circuit by activating the input",
+            "Report completion or any issues",
+        ],
+    ),
+    (
+        re.compile(
+            r"\bbreed\b|ranch|pasture|livestock|\bherd\b|"
+            r"\b(pig|cow|chicken|sheep|horse)\b",
+            re.IGNORECASE,
+        ),
+        "Set up an animal farm",
+        [
+            "Check inventory for wheat, carrots, or seeds (animal breeding food)",
+            "Locate suitable animals nearby (cows, pigs, chickens, or sheep)",
+            "Build a fenced enclosure (at least 5x5 with a gate)",
+            "Lure animals into the enclosure using their preferred food",
+            "Ensure at least 2 of the same species are present for breeding",
+            "Feed the animals to trigger breeding (heart particles appear)",
+            "Wait for baby animals to grow into adults",
+            "Set up continuous breeding by adding more animals over time",
+            "Optionally harvest adult animals for food using the attack action",
+            "Report farm status and animal count",
+        ],
+    ),
+    (
+        re.compile(
+            r"villager|\btrader\b|trading|emerald|\bmerchant\b|"
+            r"(librarian|cleric|fletcher|fletcher|farmer|priest|blacksmith|weaponsmith|"
+            r"toolsmith|butcher|leatherworker|mason|wandering\s+trader)",
+            re.IGNORECASE,
+        ),
+        "Set up villager trading",
+        [
+            "Locate a village (or cure a zombie villager if none is nearby)",
+            "Check inventory for emeralds and useful trade items",
+            "Identify a useful profession: librarian (books), cleric (ender pearls), farmer (food)",
+            "Find a villager without a profession or place the desired job site block",
+            "Build or locate a trading hall to keep villagers contained",
+            "Trade with villagers to obtain useful items or emeralds",
+            "Cure any zombie villagers with a weakness potion and golden apple",
+            "Set up a trade refresh loop: break and replace the job site block",
+            "Report emeralds earned and trades completed",
+        ],
+    ),
     (
         re.compile(r"house|build|shelter|home|base", re.IGNORECASE),
         "Build a shelter",

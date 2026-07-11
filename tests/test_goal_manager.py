@@ -89,6 +89,114 @@ class TestFallbackPlans:
         root = await gm.set_goal("Describe your surroundings")
         assert len(root.sub_goals) == 5
 
+    async def test_nether_portal_plan(self, gm):
+        root = await gm.set_goal("Build a nether portal")
+        descs = [s.description for s in root.sub_goals]
+        assert len(descs) == 8
+        assert any("obsidian" in d.lower() for d in descs)
+        assert any("flint" in d.lower() for d in descs)
+        # Must beat the generic "build" plan (which is 11 steps)
+        assert len(descs) != 11
+
+    async def test_nether_portal_alt_phrasings(self, gm):
+        """The nether pattern should match common variants."""
+        for goal in (
+            "Build a nether portal",
+            "Go to the nether",
+            "Make a portal to hell",
+            "Build a hell portal",
+            "Get some netherrack",
+        ):
+            root = await gm.set_goal(goal)
+            descs = [s.description for s in root.sub_goals]
+            assert len(descs) == 8, f"goal={goal!r} gave {len(descs)} steps"
+
+    async def test_end_portal_plan(self, gm):
+        root = await gm.set_goal("Activate the end portal")
+        descs = [s.description for s in root.sub_goals]
+        assert len(descs) == 8
+        assert any("ender pearl" in d.lower() for d in descs)
+        assert any("eye" in d.lower() for d in descs)
+
+    async def test_end_portal_alt_phrasings(self, gm):
+        for goal in (
+            "Find the end portal",
+            "Kill the ender dragon",
+            "Go to the end",
+            "Find a stronghold",
+        ):
+            root = await gm.set_goal(goal)
+            descs = [s.description for s in root.sub_goals]
+            assert len(descs) == 8, f"goal={goal!r} gave {len(descs)} steps"
+
+    async def test_redstone_plan(self, gm):
+        root = await gm.set_goal("Build a redstone piston door")
+        descs = [s.description for s in root.sub_goals]
+        assert len(descs) == 10
+        assert any("redstone" in d.lower() for d in descs)
+        assert any("repeater" in d.lower() for d in descs)
+
+    async def test_redstone_alt_phrasings(self, gm):
+        for goal in (
+            "Build a redstone circuit",
+            "Make a redstone lamp timer",
+            "Set up a piston automation",
+        ):
+            root = await gm.set_goal(goal)
+            descs = [s.description for s in root.sub_goals]
+            assert len(descs) == 10, f"goal={goal!r} gave {len(descs)} steps"
+
+    async def test_animal_farm_plan(self, gm):
+        root = await gm.set_goal("Breed some cows")
+        descs = [s.description for s in root.sub_goals]
+        assert len(descs) == 10
+        assert any("fence" in d.lower() or "enclos" in d.lower() for d in descs)
+        assert any("wheat" in d.lower() or "feed" in d.lower() for d in descs)
+
+    async def test_animal_farm_alt_phrasings(self, gm):
+        for goal in (
+            "Breed some cows",
+            "Set up a pig farm",
+            "Build a chicken ranch",
+            "Create a sheep pasture",
+        ):
+            root = await gm.set_goal(goal)
+            descs = [s.description for s in root.sub_goals]
+            assert len(descs) == 10, f"goal={goal!r} gave {len(descs)} steps"
+        # And verify it beats the generic crop-farm plan (which is also 10)
+        # by checking that enclosure/breeding language is present.
+        root = await gm.set_goal("Breed some pigs")
+        joined = " ".join(s.description for s in root.sub_goals).lower()
+        assert "fence" in joined or "enclos" in joined
+
+    async def test_villager_trading_plan(self, gm):
+        root = await gm.set_goal("Trade with villagers for emeralds")
+        descs = [s.description for s in root.sub_goals]
+        assert len(descs) == 9
+        assert any("emerald" in d.lower() for d in descs)
+        assert any("village" in d.lower() or "villager" in d.lower() for d in descs)
+
+    async def test_villager_trading_alt_phrasings(self, gm):
+        for goal in (
+            "Set up a librarian villager",
+            "Trade emeralds for books",
+            "Cure a zombie villager",
+        ):
+            root = await gm.set_goal(goal)
+            descs = [s.description for s in root.sub_goals]
+            assert len(descs) == 9, f"goal={goal!r} gave {len(descs)} steps"
+
+    async def test_new_plans_beat_generic_build(self, gm):
+        """Verify the new specific patterns are placed before the generic
+        'build' pattern, so a goal like 'build a nether portal' matches the
+        nether plan (8 steps), not the build plan (11 steps)."""
+        nether_root = await gm.set_goal("Build a nether portal")
+        assert len(nether_root.sub_goals) == 8
+        redstone_root = await gm.set_goal("Build a redstone clock")
+        assert len(redstone_root.sub_goals) == 10
+        end_root = await gm.set_goal("Build an end portal")
+        assert len(end_root.sub_goals) == 8
+
     async def test_generic_plan(self, gm):
         root = await gm.set_goal("Do something completely unique")
         assert len(root.sub_goals) == 6
