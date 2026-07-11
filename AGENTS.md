@@ -53,12 +53,27 @@
 ### Documentation
 - `README.md` — complete project overview
 - `ROADMAP.md` — current priorities, completed milestones, release plan
+- `CHANGELOG.md` — release-by-release change log (Added / Changed / Fixed / Removed)
 - `docs/ARCHITECTURE.md` — 3-layer architecture deep dive
 - `docs/SETUP.md` — installation guide (Docker + local)
 - `docs/CLI.md` — CLI reference
 - `docs/AGENT.md` — agent internals (loop, actions, goals, memory)
 - `docs/EXTENDING.md` — how to extend actions, providers, etc.
 - `this file` — AGENTS.md handoff notes
+
+## CHANGELOG.md — maintenance rule
+
+> **For future agents (especially stateless sessions):** every PR
+> that changes user-visible behaviour (anything beyond pure refactor,
+> lint, or test cleanup) **MUST** add a line to `CHANGELOG.md` under
+> the `## [Unreleased]` section. The PR description should reference
+> the relevant subsection. This is enforced by the user, not CI.
+
+The format uses `### Added`, `### Changed`, `### Fixed`, `### Removed`
+subsections. When a version is tagged (e.g. `v0.5.1`), the
+`[Unreleased]` section becomes `[X.Y.Z] - YYYY-MM-DD` and a new
+empty `[Unreleased]` section is added above it. See the file for
+examples and the conventions block at the top.
 
 ## Known Issues & Limitations
 

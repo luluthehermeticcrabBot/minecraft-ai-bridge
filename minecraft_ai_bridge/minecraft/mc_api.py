@@ -127,6 +127,33 @@ class McpqClient:
             return (player.pos.x, player.pos.y, player.pos.z)
         return None
 
+    async def get_hurt_by_entity(self) -> bool:
+        """Return True if the player was last hurt by an entity.
+
+        Reads the ``LastHurtByEntity`` NBT field via
+        ``/data get entity @p LastHurtByEntity``.  Returns True when
+        the field is present (damage came from another entity — a mob,
+        a player, a projectile, etc.), False when the field is absent
+        (damage came from the environment: fall, cactus, fire, lava,
+        suffocation, drowning, etc.).
+
+        The reflex-attack path in the self-preservation layer uses
+        this to skip reflex behaviour on environmental damage — we
+        don't want the agent to charge a zombie because it tripped
+        on a cactus.
+        """
+        try:
+            resp = await self.run_command_blocking("data get entity @p LastHurtByEntity")
+            if not resp:
+                return False
+            # The response includes the UUID array only when an entity
+            # is recorded. Paper 1.21 emits the response as
+            # "<name> has the following entity data: [I;...]" when set
+            # and "No entity was found" (or similar) when not.
+            return "has the following entity data" in resp
+        except Exception:
+            return False
+
     async def get_player_info(self) -> dict[str, Any]:
         """Return structured info about the configured player."""
         player = await self.get_player()

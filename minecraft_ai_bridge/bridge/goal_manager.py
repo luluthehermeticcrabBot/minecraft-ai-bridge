@@ -127,6 +127,25 @@ _FALLBACK_PLANS: list[tuple[re.Pattern, str, list[str]]] = [
     ),
     (
         re.compile(
+            r"\b(flee|escape|retreat|run\s+away|get\s+away|"
+            r"get\s+to\s+safety|find\s+shelter|hide|"
+            r"out\s+numbered|outmatched)\b",
+            re.IGNORECASE,
+        ),
+        "Flee to safety",
+        [
+            "Scan surroundings with scan_entities to identify hostile mobs",
+            "Identify the direction AWAY from the hostiles (opposite vector)",
+            "Sprint 10+ blocks in that direction (sprint action)",
+            "Once at a safe distance, scan again — if hostiles still nearby, sprint further",
+            "Look for shelter: a cave entrance, a small structure, or elevated terrain",
+            "Once safe (no hostiles in radius 16), pause and recheck position",
+            "Check health and consider healing if golden apples are in inventory",
+            "Resume the original task once the threat has passed",
+        ],
+    ),
+    (
+        re.compile(
             r"villager|\btrader\b|trading|emerald|\bmerchant\b|"
             r"(librarian|cleric|fletcher|fletcher|farmer|priest|blacksmith|weaponsmith|"
             r"toolsmith|butcher|leatherworker|mason|wandering\s+trader)",
