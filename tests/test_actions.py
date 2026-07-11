@@ -254,6 +254,61 @@ class TestInventory:
         assert result.success is True
         assert "drop" in result.message.lower() or "dropped" in result.message.lower()
 
+    async def test_eat_bread(self, mock_mc):
+        result = await execute_action(mock_mc, ActionType.EAT, {"food_item": "bread"})
+        assert result.success is True
+        assert "bread" in result.message.lower()
+        assert result.data.get("food_item") == "bread"
+        assert result.data.get("hunger_restored") == 5
+
+    async def test_eat_with_namespaced_id(self, mock_mc):
+        """The namespace prefix should be stripped before lookup."""
+        result = await execute_action(mock_mc, ActionType.EAT, {"food_item": "minecraft:bread"})
+        assert result.success is True
+        assert result.data.get("food_item") == "bread"
+
+    async def test_eat_golden_carrot_higher_value(self, mock_mc):
+        """Golden carrot should restore more hunger than bread."""
+        bread = await execute_action(mock_mc, ActionType.EAT, {"food_item": "bread"})
+        golden = await execute_action(mock_mc, ActionType.EAT, {"food_item": "golden_carrot"})
+        assert golden.data.get("hunger_restored") > bread.data.get("hunger_restored")
+
+    async def test_eat_unknown_food_fails(self, mock_mc):
+        result = await execute_action(mock_mc, ActionType.EAT, {"food_item": "not_a_real_food"})
+        assert result.success is False
+
+    async def test_eat_no_food_param_fails(self, mock_mc):
+        result = await execute_action(mock_mc, ActionType.EAT, {})
+        assert result.success is False
+        assert "food_item" in result.message.lower()
+
+    async def test_eat_with_slot_param(self, mock_mc):
+        """Slot parameter is accepted (and ignored if equip fails)."""
+        result = await execute_action(mock_mc, ActionType.EAT, {"food_item": "bread", "slot": 0})
+        assert result.success is True
+
+    async def test_food_is_food_helper(self):
+        """The _is_food helper should recognise food IDs with or without namespace."""
+        from minecraft_ai_bridge.minecraft.actions import _is_food
+
+        assert _is_food("bread")
+        assert _is_food("minecraft:bread")
+        assert _is_food("golden_apple")
+        assert not _is_food("stone")
+        assert not _is_food("dirt")
+        assert not _is_food("not_a_real_food")
+
+    async def test_food_value_helper(self):
+        """The _food_value helper should return (hunger, saturation) for known foods."""
+        from minecraft_ai_bridge.minecraft.actions import _food_value
+
+        h_bread, s_bread = _food_value("bread")
+        h_carrot, s_carrot = _food_value("golden_carrot")
+        # Golden carrot has higher saturation than bread
+        assert s_carrot > s_bread
+        # Unknown food returns (0, 0)
+        assert _food_value("not_a_food") == (0.0, 0.0)
+
     async def test_craft_item_failure(self, mock_mc):
         """Test error handling when /give fails."""
         original_run = mock_mc.run_as_player

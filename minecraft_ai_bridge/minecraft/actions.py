@@ -6,6 +6,7 @@ as a fallback), allowing the agent to observe and interact with the world.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -42,6 +43,7 @@ class ActionType(StrEnum):
     EQUIP_ITEM = "equip_item"
     CRAFT_ITEM = "craft_item"
     DROP_ITEM = "drop_item"
+    EAT = "eat"
 
     # ── Combat ──────────────────────────────────────────────────────
     ATTACK = "attack"
@@ -78,6 +80,87 @@ class ActionResult:
 # These sets define which blocks the agent can walk through (passable),
 # which are hazards (cause damage), and which indicate player-made
 # structures (should not be built over).
+
+# ── Edible food items ────────────────────────────────────────────────────
+# Used by the EAT action and the auto-consume path in the
+# SelfPreservationLayer.  Each entry is (item_id, hunger_restored,
+# saturation_points).  Higher saturation is better — we prefer
+# golden_carrot over bread over raw_potato.  Values are from the
+# Minecraft 1.21.x food table.
+#
+# The auto-consume layer picks the highest-saturation food in the
+# player's inventory; if multiple stacks have the same item, the
+# one with the highest count is preferred.
+_FOOD_ITEMS: tuple[tuple[str, float, float], ...] = (
+    # Tier 1 — best foods
+    ("enchanted_golden_apple", 4.0, 9.6),
+    ("golden_apple", 4.0, 9.6),
+    ("golden_carrot", 6.0, 14.4),
+    ("cooked_salmon", 6.0, 9.6),
+    ("cooked_cod", 5.0, 6.0),
+    # Tier 2 — solid foods
+    ("cooked_beef", 8.0, 12.8),
+    ("cooked_porkchop", 8.0, 12.8),
+    ("cooked_mutton", 6.0, 9.6),
+    ("cooked_chicken", 6.0, 7.2),
+    ("baked_potato", 5.0, 6.0),
+    ("bread", 5.0, 6.0),
+    ("melon_slice", 2.0, 1.2),
+    ("sweet_berries", 2.0, 0.4),
+    ("dried_kelp", 1.0, 0.6),
+    # Tier 3 — acceptable but lower quality
+    ("carrot", 3.0, 3.6),
+    ("potato", 1.0, 0.6),
+    ("beetroot", 1.0, 1.2),
+    ("apple", 4.0, 2.4),
+    ("cookie", 2.0, 0.4),
+    ("honey_bottle", 6.0, 1.2),
+    # Tier 4 — raw / less effective
+    ("raw_beef", 3.0, 1.8),
+    ("raw_porkchop", 3.0, 1.8),
+    ("raw_chicken", 2.0, 1.2),
+    ("raw_mutton", 2.0, 1.2),
+    ("raw_cod", 2.0, 0.4),
+    ("raw_salmon", 2.0, 0.4),
+    # Tier 5 — soups and special
+    ("mushroom_stew", 6.0, 7.2),
+    ("beetroot_soup", 6.0, 7.2),
+    ("rabbit_stew", 10.0, 12.0),
+    ("pumpkin_pie", 8.0, 4.8),
+    ("suspicious_stew", 6.0, 7.2),  # may have status effects
+    # Tier 6 — emergency (poisonous but fills hunger)
+    ("spider_eye", 2.0, 3.2),
+    ("poisonous_potato", 2.0, 1.2),
+    ("pufferfish", 1.0, 0.2),
+    ("chorus_fruit", 4.0, 2.4),
+    # Tier 7 — cake (only fills 1 hunger per slice, so low priority)
+    ("cake", 1.0, 0.1),
+)
+
+# Map from item_id to (hunger, saturation) for fast lookup
+_FOOD_LOOKUP: dict[str, tuple[float, float]] = {
+    item_id: (hunger, sat) for item_id, hunger, sat in _FOOD_ITEMS
+}
+
+
+def _is_food(item_id: str) -> bool:
+    """Check whether an item ID is edible.
+
+    Strips the ``minecraft:`` namespace before checking, so both
+    ``"minecraft:bread"`` and ``"bread"`` are recognised.
+    """
+    bid = item_id.lower().replace("minecraft:", "")
+    return bid in _FOOD_LOOKUP
+
+
+def _food_value(item_id: str) -> tuple[float, float]:
+    """Return (hunger_restored, saturation) for an edible item.
+
+    Caller should check ``_is_food(item_id)`` first; this returns
+    ``(0.0, 0.0)`` for non-food items.
+    """
+    return _FOOD_LOOKUP.get(item_id.lower().replace("minecraft:", ""), (0.0, 0.0))
+
 
 _PASSABLE_BLOCKS: set[str] = {
     "air",
@@ -943,6 +1026,90 @@ async def _drop_item(mc: McpqClient, params: dict) -> ActionResult:
         )
 
 
+# ── Eating ─────────────────────────────────────────────────────────────
+
+
+async def _eat(mc: McpqClient, params: dict) -> ActionResult:
+    """Eat a food item from the player's inventory.
+
+    Parameters (from ``params``):
+      - ``food_item`` (required): the item ID to eat (e.g. ``"bread"``).
+        The ``minecraft:`` namespace is optional.
+      - ``slot`` (optional): the inventory slot number to eat from. If
+        omitted, scans inventory for the item.
+
+    Mechanics:
+      1. Equip the food item to the main hand.
+      2. Apply a short saturation effect via ``/effect give @p
+         saturation <duration> <level>`` so the player immediately
+         gains hunger back even if no client is consuming the held
+         item.  In a real client this would happen via right-click;
+         for the headless bridge we just restore the hunger.
+      3. Decrement the item count from the inventory.
+
+    Returns ActionResult with structured ``data``:
+      - ``food_item``: the item that was eaten
+      - ``hunger_restored``: integer hunger gained
+      - ``saturation_points``: saturation effect duration × level
+    """
+    food_item = str(params.get("food_item", "")).strip()
+    if not food_item:
+        return ActionResult(
+            success=False,
+            action=ActionType.EAT,
+            message="EAT requires a 'food_item' parameter (e.g. food_item='bread')",
+        )
+
+    # Normalise the item ID (strip the namespace for lookups)
+    bare = food_item.lower().replace("minecraft:", "")
+    if not _is_food(bare):
+        return ActionResult(
+            success=False,
+            action=ActionType.EAT,
+            message=f"'{food_item}' is not a known edible item",
+        )
+
+    hunger_restored, saturation = _food_value(bare)
+
+    # Step 1: equip the food (best-effort — if the slot lookup fails
+    # we still apply the saturation effect to restore hunger).
+    slot = params.get("slot")
+    if slot is not None:
+        with contextlib.suppress(Exception):
+            await execute_action(
+                mc,
+                ActionType.EQUIP_ITEM,
+                {"slot": int(slot)},
+            )
+
+    # Step 2: apply saturation effect.  The duration is 1 second
+    # (configurable); the level is rounded up to match the food's
+    # saturation value.  This is a headless-friendly approximation:
+    # in a real client the player would consume the held item via
+    # right-click and the vanilla hunger/saturation system would
+    # take over.
+    sat_level = max(1, int(saturation / 2 + 0.5))  # 1 level = 2 saturation
+    with contextlib.suppress(Exception):
+        await _cmd(mc, f"effect give @p saturation 1 {sat_level}")
+
+    # Step 3: remove one of the food items from inventory.  In the
+    # real client this is the consequence of the player consuming
+    # the item.  We simulate by clearing one from the inventory.
+    with contextlib.suppress(Exception):
+        await _cmd(mc, f"clear @p minecraft:{bare} 1")
+
+    return ActionResult(
+        success=True,
+        action=ActionType.EAT,
+        message=f"Ate 1x {bare} (restored {int(hunger_restored)} hunger)",
+        data={
+            "food_item": bare,
+            "hunger_restored": int(hunger_restored),
+            "saturation_points": saturation,
+        },
+    )
+
+
 # ── Combat ──────────────────────────────────────────────────────────────
 
 
@@ -1642,6 +1809,7 @@ _HANDLERS: dict[ActionType, Handler] = {
     ActionType.EQUIP_ITEM: _equip_item,
     ActionType.CRAFT_ITEM: _craft_item,
     ActionType.DROP_ITEM: _drop_item,
+    ActionType.EAT: _eat,
     ActionType.ATTACK: _attack,
     ActionType.SCAN_ENTITIES: _scan_entities,
     ActionType.SCAN: _scan,

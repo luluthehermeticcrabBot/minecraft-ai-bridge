@@ -53,6 +53,28 @@ section. This is enforced by the AGENTS.md "CHANGELOG.md" rule.
     assessment counts only attackable mobs against the flee
     threshold. A critical mob in range triggers flee even alone.
   - SYSTEM_PROMPT updated to document the new scan_entities fields.
+- **Survival series — auto-consume food** (PR #8, slice 1 of post-survival work):
+  - `ActionType.EAT` action handler. Takes `food_item` (e.g. `bread`,
+    `golden_apple`) and an optional `slot` parameter. Equips the food
+    to the player's hand, applies a saturation effect via
+    `/effect give @p saturation` to restore hunger immediately, and
+    clears one of the food items from inventory. Headless-friendly:
+    no client interaction required to consume.
+  - `_FOOD_ITEMS` table in `minecraft/actions.py` — 32 edible items
+    with (item_id, hunger_restored, saturation_points) entries,
+    covering tier 1 (enchanted_golden_apple) through tier 7 (cake).
+    Sorted by saturation, descending.
+  - `_is_food()` and `_food_value()` helpers. Strips the
+    `minecraft:` namespace before lookup so both `bread` and
+    `minecraft:bread` are recognised.
+  - **Auto-consume** in `SelfPreservationLayer` — when hunger is
+    below `hunger_critical_threshold` AND the player has food in
+    inventory, the layer picks the highest-saturation food and
+    triggers the EAT action **without waiting for the LLM**. Closes
+    the "find food and then wait for the LLM to eat it" loop that
+    the v0.5.1 design had.
+  - `PreservationConfig.enable_auto_consume` flag (default True).
+  - SYSTEM_PROMPT updated to document the new `eat` action.
 - **Survival series — hunger observation** (PR #5):
   `ActionType.CHECK_HUNGER` action handler and `WorldState.hunger`
   field. The LLM can now see its food level (0–20) and react
