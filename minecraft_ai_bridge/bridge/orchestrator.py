@@ -5,15 +5,15 @@ into a continuous think–act–observe loop.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
-from dataclasses import dataclass, field
-from typing import Any
+from dataclasses import dataclass
 
 from ..config import AppConfig
 from ..llm.client import LLMClient, OpenCodeServerClient, create_llm_client
 from ..llm.models import LLMResponse, Message, Role
-from ..llm.prompts import SYSTEM_PROMPT, format_goal, format_state
+from ..llm.prompts import SYSTEM_PROMPT, format_state
 from ..minecraft import ActionResult, ActionType, McpqClient, Observer, WorldState, execute_action
 from .chat_commands import ChatCommandHandler
 from .goal_manager import GoalManager
@@ -151,10 +151,8 @@ class Orchestrator:
 
         # ── Check for in-game commands (N4) ──────────────────────
         if self._cmd_handler:
-            try:
+            with contextlib.suppress(Exception):
                 await self._cmd_handler.poll()
-            except Exception:
-                pass
         if self._stop_requested:
             return True
 
@@ -190,10 +188,8 @@ class Orchestrator:
 
         # ── Periodic inventory refresh (N1) ──────────────────────
         if self._inventory and self._turn % 5 == 0:
-            try:
+            with contextlib.suppress(Exception):
                 await self._inventory.refresh()
-            except Exception:
-                pass
 
         # ── Observe ──────────────────────────────────────────────
         world = await self._observe()
@@ -347,10 +343,8 @@ class Orchestrator:
     async def _chat(self, message: str) -> None:
         """Send a chat message as the agent."""
         if self._mc and self._mc.connected:
-            try:
+            with contextlib.suppress(Exception):
                 await self._mc.post_to_chat(message)
-            except Exception:
-                pass
 
     # ── Connection management ────────────────────────────────────────
 
@@ -396,7 +390,7 @@ class Orchestrator:
 
             # Poll until the player entity is confirmed present
             logger.info("Waiting for player '%s' to be registered …", player_name)
-            for poll_attempt in range(10):
+            for _poll_attempt in range(10):
                 await asyncio.sleep(1)
                 try:
                     pos = await self._mc.get_player_pos()
@@ -429,15 +423,13 @@ class Orchestrator:
                 # Build a 3×3 solid platform under the player
                 for dx in (-1, 0, 1):
                     for dz in (-1, 0, 1):
-                        try:
+                        with contextlib.suppress(Exception):
                             await self._mc.set_block(
                                 "dirt",
                                 safe_x + dx,
                                 safe_y - 1,
                                 safe_z + dz,
                             )
-                        except Exception:
-                            pass
                 await asyncio.sleep(2)
                 safe_pos = await self._mc.get_player_pos()
                 if safe_pos:
@@ -481,17 +473,13 @@ class Orchestrator:
 
         # Persist memory database (N3)
         if hasattr(self._memory, "close"):
-            try:
+            with contextlib.suppress(Exception):
                 self._memory.close()
-            except Exception:
-                pass
 
         # Clean up OpenCodeServerClient HTTP session if applicable
         if isinstance(self._llm, OpenCodeServerClient):
-            try:
+            with contextlib.suppress(Exception):
                 await self._llm.close()
-            except Exception:
-                pass
 
     # ── Logging ──────────────────────────────────────────────────────
 

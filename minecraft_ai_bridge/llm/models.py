@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 
-class Role(str, Enum):
+class Role(StrEnum):
     SYSTEM = "system"
     USER = "user"
     ASSISTANT = "assistant"
@@ -48,7 +48,7 @@ class LLMResponse(BaseModel):
     reasoning: str = ""
 
     @classmethod
-    def from_tool_call(cls, tool_call: ToolCall) -> "LLMResponse":
+    def from_tool_call(cls, tool_call: ToolCall) -> LLMResponse:
         """Build an LLMResponse from a tool-call request."""
         return cls(
             thought="",
@@ -70,7 +70,7 @@ class AgentGoal(BaseModel):
 
     # Private: object reference to parent for navigating the goal tree.
     # Not serialised — set by GoalManager when building the tree.
-    _parent_ref: "AgentGoal | None" = None
+    _parent_ref: AgentGoal | None = None
 
     @property
     def active_sub_goal(self) -> AgentGoal | None:

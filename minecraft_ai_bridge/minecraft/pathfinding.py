@@ -199,14 +199,11 @@ class Pathfinder:
         total = width * height
         logger.debug("Scanning %d×%d = %d blocks for pathfinding", width, height, total)
 
-        y_offset = 0
-
         # Try multiple Y offsets if the initial level isn't walkable for the start
-        for _ in range(3):
+        for y_offset in range(3):
             result = await self._scan_at_y(min_x, max_x, min_z, max_z, y_level + y_offset)
             if result is not None:
                 return result, y_level + y_offset
-            y_offset += 1
 
         # Final attempt at original level
         result = await self._scan_at_y(min_x, max_x, min_z, max_z, y_level)
@@ -252,7 +249,7 @@ class Pathfinder:
                     return_exceptions=True,
                 )
 
-                for (x, _, z), h, f, b in zip(batch, heads, feets, belows):
+                for (x, _, z), h, f, b in zip(batch, heads, feets, belows, strict=False):
                     head_map[(x, z)] = str(h) if not isinstance(h, Exception) else "unknown"
                     feet_map[(x, z)] = str(f) if not isinstance(f, Exception) else "unknown"
                     below_map[(x, z)] = str(b) if not isinstance(b, Exception) else "unknown"

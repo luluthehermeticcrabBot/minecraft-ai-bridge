@@ -3,6 +3,12 @@
 All prompts live here so they can be iterated on without touching logic.
 """
 
+# This file is a collection of long LLM prompts. Long lines are intentional
+# for prompt readability — do not wrap them or inject line-continuation
+# backslashes, as that would change the actual prompt content sent to the
+# model.
+# ruff: noqa: E501
+
 from __future__ import annotations
 
 from .models import AgentGoal

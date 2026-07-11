@@ -17,9 +17,10 @@ Supported commands
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import re
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .orchestrator import Orchestrator
@@ -211,7 +212,5 @@ class ChatCommandHandler:
         """Send a chat message via the MCPQ client."""
         mc = getattr(self._orch, "_mc", None)
         if mc and mc.connected:
-            try:
+            with contextlib.suppress(Exception):
                 await mc.post_to_chat(message)
-            except Exception:
-                pass

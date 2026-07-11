@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from minecraft_ai_bridge.minecraft.observer import (
     InventorySlot,
     _parse_inventory_nbt,

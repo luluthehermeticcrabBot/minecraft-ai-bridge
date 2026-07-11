@@ -8,6 +8,7 @@ provides direct world interaction, player control, and command execution.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from collections.abc import Callable
 from typing import Any
@@ -105,7 +106,7 @@ class McpqClient:
 
     # ── Thread-pool helper ────────────────────────────────────────────
 
-    async def _run(self, func: "Callable", *args: Any, **kwargs: Any) -> Any:
+    async def _run(self, func: Callable, *args: Any, **kwargs: Any) -> Any:
         """Run a synchronous function in a thread-pool."""
         return await asyncio.to_thread(func, *args, **kwargs)
 
@@ -133,10 +134,8 @@ class McpqClient:
             return {"online": False}
 
         nbt = None
-        try:
+        with contextlib.suppress(Exception):
             nbt = await self._run(player.getNbt)
-        except Exception:
-            pass
 
         info: dict[str, Any] = {
             "online": True,

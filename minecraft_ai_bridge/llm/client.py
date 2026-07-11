@@ -272,7 +272,7 @@ class AnthropicClient(LLMClient):
         except ImportError:
             raise ImportError(
                 "Install anthropic package: pip install minecraft-ai-bridge[anthropic]"
-            )
+            ) from None
         self._client = AsyncAnthropic(api_key=api_key)
         self._model = model
         self._temperature = temperature

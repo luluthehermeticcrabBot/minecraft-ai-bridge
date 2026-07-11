@@ -5,7 +5,6 @@ from __future__ import annotations
 import pytest
 
 from minecraft_ai_bridge.bridge.goal_manager import GoalManager
-from minecraft_ai_bridge.llm.models import AgentGoal
 
 
 @pytest.fixture

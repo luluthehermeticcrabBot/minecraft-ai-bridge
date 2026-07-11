@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import logging
 from collections import Counter
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..minecraft.mc_api import McpqClient
@@ -41,7 +41,7 @@ class InventoryManager:
 
     async def refresh(self) -> None:
         """Fetch and parse the current inventory from the server."""
-        from ..minecraft.actions import ActionResult, ActionType, execute_action
+        from ..minecraft.actions import ActionType, execute_action
 
         result = await execute_action(self._mc, ActionType.CHECK_INVENTORY)
         if result.success:

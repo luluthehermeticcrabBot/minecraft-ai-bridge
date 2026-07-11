@@ -5,15 +5,12 @@ All test modules import from here to get a consistent mock environment.
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import AsyncGenerator
 from typing import Any
 
 import pytest
 import pytest_asyncio
 
-from minecraft_ai_bridge.minecraft.actions import ActionResult, ActionType
-from minecraft_ai_bridge.minecraft.mc_api import McpqClient
 from minecraft_ai_bridge.minecraft.observer import InventorySlot, WorldState
 
 # ── Mock MCPQ Client ──────────────────────────────────────────────────────
@@ -44,9 +41,6 @@ class MockMcpqClient:
 
     def set_position(self, x: float, y: float, z: float) -> None:
         self._pos = (x, y, z)
-
-    def set_block(self, x: int, y: int, z: int, block_type: str) -> None:
-        self._block_map[(x, y, z)] = block_type
 
     def set_block_map(self, blocks: dict[tuple[int, int, int], str]) -> None:
         self._block_map.update(blocks)

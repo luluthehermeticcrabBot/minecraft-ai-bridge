@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from minecraft_ai_bridge.llm.models import AgentGoal
 from minecraft_ai_bridge.llm.prompts import format_goal, format_state, summarize_result
 
