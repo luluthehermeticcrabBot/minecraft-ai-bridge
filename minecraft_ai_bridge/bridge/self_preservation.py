@@ -40,9 +40,15 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ..llm.models import AgentGoal
-from ..minecraft.actions import ActionResult, ActionType, execute_action
+from ..minecraft.actions import (
+    ActionResult,
+    ActionType,
+    _food_value,
+    _is_food,
+    execute_action,
+)
 from ..minecraft.mc_api import McpqClient
-from ..minecraft.observer import WorldState
+from ..minecraft.observer import InventorySlot, WorldState
 
 if TYPE_CHECKING:
     from .goal_manager import GoalManager
@@ -77,6 +83,7 @@ class PreservationConfig:
     enable_reflex_attack: bool = True
     enable_reflex_flee: bool = True
     enable_auto_find_food: bool = True
+    enable_auto_consume: bool = True
 
 
 # Result of a threat assessment.  Used to decide fight-vs-flee.
@@ -140,6 +147,12 @@ class SelfPreservationLayer:
         # the LLM still gets to think on the next turn.
         if self._config.enable_auto_find_food:
             self._maybe_inject_find_food(world)
+
+        # Auto-consume: if hungry AND have food, eat it immediately.
+        # Returns an ActionResult to skip the LLM this turn; falls
+        # through if no food is in inventory.
+        if self._config.enable_auto_consume and reflex is None:
+            reflex = await self._maybe_auto_consume(world)
 
         # Memory hint for the LLM context window.
         if world.health is not None and world.health < self._config.health_critical_threshold:
@@ -363,3 +376,72 @@ class SelfPreservationLayer:
             f"Hunger critical: {world.hunger}/20 — injected find-food sub-goal"
         )
         logger.info("Injected URGENT find-food sub-goal (hunger=%d)", world.hunger)
+
+    # ── Auto-consume ──────────────────────────────────────────────
+
+    async def _maybe_auto_consume(self, world: WorldState) -> ActionResult | None:
+        """Eat the best available food when hunger is critical.
+
+        Behaviour:
+          * If hunger is at or above ``hunger_critical_threshold``,
+            return None (no need to eat).
+          * Otherwise, scan the player's inventory for any edible
+            item (see ``_is_food`` and ``_FOOD_ITEMS`` in
+            ``minecraft/actions.py``).  If none, return None — the
+            find-food sub-goal will be injected on a later turn
+            (or already was).
+          * Pick the food with the highest saturation value
+            (best restoration per item).  Ties broken by count.
+          * Issue an ``EAT`` action with the chosen item.  The
+            action's underlying implementation applies a saturation
+            effect to restore hunger without requiring a real
+            client to right-click the food.
+
+        Returns the eat :class:`ActionResult` so the orchestrator
+        uses it as the action for this turn (skipping the LLM).
+        """
+        if world.hunger is None or world.hunger >= self._config.hunger_critical_threshold:
+            return None
+
+        best = self._pick_best_food(world.inventory)
+        if best is None:
+            return None  # no food in inventory, can't auto-consume
+
+        item, slot = best
+        eat = await execute_action(
+            self._mc,
+            ActionType.EAT,
+            {"food_item": item, "slot": slot},
+        )
+        if eat.success:
+            self._memory.remember_fact(f"Auto-consumed {item} (hunger was {world.hunger}/20)")
+            logger.info("Auto-consumed %s (hunger was %d/20)", item, world.hunger)
+        return eat
+
+    @staticmethod
+    def _pick_best_food(
+        inventory: list[InventorySlot],
+    ) -> tuple[str, int] | None:
+        """Return (item_id, slot) for the best food in inventory.
+
+        "Best" means highest saturation, breaking ties by largest
+        stack count.  Returns None if no edible item is present.
+        """
+        candidates: list[tuple[float, int, str, int]] = []
+        for slot in inventory:
+            if not _is_food(slot.item_id):
+                continue
+            _hunger, sat = _food_value(slot.item_id)
+            candidates.append((sat, slot.count, slot.item_id, slot.slot))
+
+        if not candidates:
+            return None
+
+        # Sort descending: highest saturation first; on tie, largest count.
+        # Python's sort is stable, so within the same saturation, the
+        # original order is preserved — but we want the highest count
+        # to win, so we sort by (-sat, -count).
+        candidates.sort(key=lambda c: (c[0], c[1]), reverse=True)
+        _sat, _count, item_id, slot_no = candidates[0]
+        # Strip the namespace so the EAT action sees the bare ID
+        return item_id.replace("minecraft:", ""), slot_no

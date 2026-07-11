@@ -242,6 +242,10 @@ class MockMcpqClient:
             return "Spawned item entity"
         if cmd.startswith("damage"):
             return "Damaged 1 entity"
+        if cmd.startswith("effect give"):
+            # saturation/regeneration/etc. effects — return a success
+            # response. The EAT action relies on this.
+            return "Given effect to AIBot"
         if cmd.startswith("botsummon"):
             return "Summoned bot"
         if cmd.startswith("setblock"):
