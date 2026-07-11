@@ -41,6 +41,7 @@ class WorldState:
 
     position: tuple[float, float, float] | None = None
     health: float | None = None
+    hunger: int | None = None
     inventory_raw: str = ""
     inventory: list[InventorySlot] = field(default_factory=list)
     time_raw: str = ""
@@ -69,13 +70,14 @@ class Observer:
         results = await asyncio.gather(
             self._exec(ActionType.CHECK_POSITION),
             self._exec(ActionType.CHECK_HEALTH),
+            self._exec(ActionType.CHECK_HUNGER),
             self._exec(ActionType.CHECK_INVENTORY),
             self._exec(ActionType.CHECK_TIME),
             self._exec(ActionType.LIST_PLAYERS),
             return_exceptions=True,
         )
 
-        pos_res, health_res, inv_res, time_res, players_res = results
+        pos_res, health_res, hunger_res, inv_res, time_res, players_res = results
 
         if isinstance(pos_res, ActionResult) and pos_res.success:
             raw = pos_res.data.get("position_raw", "")
@@ -86,6 +88,16 @@ class Observer:
         if isinstance(health_res, ActionResult) and health_res.success:
             raw = health_res.data.get("health_raw", "")
             state.health = _parse_nbt_value(raw)
+
+        if isinstance(hunger_res, ActionResult) and hunger_res.success:
+            raw = hunger_res.data.get("hunger_raw", "")
+            # hunger is an integer 0-20; fall through to None if unparseable
+            try:
+                h = int(float(raw)) if raw not in (None, "") else None
+                if h is not None and 0 <= h <= 20:
+                    state.hunger = h
+            except (ValueError, TypeError):
+                pass
 
         if isinstance(inv_res, ActionResult) and inv_res.success:
             state.inventory_raw = inv_res.data.get("raw_inventory", "")

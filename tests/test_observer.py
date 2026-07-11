@@ -54,6 +54,34 @@ class TestObserver:
         state = await obs.observe()
         assert state.health is not None
 
+    async def test_observe_hunger(self, mock_mc):
+        from minecraft_ai_bridge.minecraft.observer import Observer
+
+        mock_mc.set_player_nbt("foodLevel", 12)
+        obs = Observer(mock_mc)
+        state = await obs.observe()
+        assert state.hunger == 12
+
+    async def test_observe_hunger_default(self, mock_mc):
+        """Hunger should default to a sane value when NBT is unavailable."""
+        from minecraft_ai_bridge.minecraft.observer import Observer
+
+        obs = Observer(mock_mc)
+        state = await obs.observe()
+        # Either the action returned a value or it fell back to the default
+        # (20/20). Both are acceptable; we just want a number in valid range.
+        assert state.hunger is not None
+        assert 0 <= state.hunger <= 20
+
+    async def test_observe_hunger_low(self, mock_mc):
+        """Low hunger should be observable so the agent can react."""
+        from minecraft_ai_bridge.minecraft.observer import Observer
+
+        mock_mc.set_player_nbt("foodLevel", 2)
+        obs = Observer(mock_mc)
+        state = await obs.observe()
+        assert state.hunger == 2
+
     async def test_observe_players(self, mock_mc):
         from minecraft_ai_bridge.minecraft.observer import Observer
 

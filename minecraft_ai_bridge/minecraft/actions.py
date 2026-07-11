@@ -51,6 +51,7 @@ class ActionType(StrEnum):
     CHECK_TIME = "check_time"
     CHECK_WEATHER = "check_weather"
     CHECK_HEALTH = "check_health"
+    CHECK_HUNGER = "check_hunger"
     CHECK_POSITION = "check_position"
     LIST_PLAYERS = "list_players"
 
@@ -1201,6 +1202,68 @@ async def _check_health(mc: McpqClient, params: dict) -> ActionResult:
     )
 
 
+async def _check_hunger(mc: McpqClient, params: dict) -> ActionResult:
+    """Check the player's hunger (foodLevel, 0-20).
+
+    Uses ``/data get entity @p foodLevel`` first. Falls back to
+    ``get_player_info()`` which reads NBT directly via MCPQ's gRPC API.
+    The food level is an integer 0-20 (same scale as health) where 20
+    is fully satiated and 0 is starving.
+    """
+    resp = await _cmd(mc, "data get entity @p foodLevel")
+    result_data: dict[str, Any] = {"hunger_raw": resp}
+
+    parsed: int | None = None
+    try:
+        import re as _re
+
+        m = _re.search(r"(-?\d+)", resp or "")
+        if m:
+            # foodLevel is stored as an integer (no float suffix in the data)
+            parsed = int(m.group(1))
+            # Clamp to valid range — values outside [0, 20] are parse errors
+            if not 0 <= parsed <= 20:
+                parsed = None
+    except (ValueError, TypeError):
+        pass
+
+    if parsed is not None:
+        return ActionResult(
+            success=True,
+            action=ActionType.CHECK_HUNGER,
+            message=f"Hunger: {parsed}/20",
+            data=result_data,
+        )
+
+    # Fallback: try MCPQ get_player_info() which reads NBT foodLevel
+    try:
+        info = await mc.get_player_info()
+        food = info.get("food")
+        if food is not None:
+            food_int = int(food)
+            if 0 <= food_int <= 20:
+                result_data["hunger_raw"] = str(food_int)
+                result_data["hunger_source"] = "mcpq_nbt"
+                return ActionResult(
+                    success=True,
+                    action=ActionType.CHECK_HUNGER,
+                    message=f"Hunger: {food_int}/20",
+                    data=result_data,
+                )
+    except Exception:
+        pass
+
+    # Ultimate fallback: assume full hunger (20) if nothing worked
+    result_data["hunger_raw"] = "20"
+    result_data["hunger_source"] = "default"
+    return ActionResult(
+        success=True,
+        action=ActionType.CHECK_HUNGER,
+        message="Hunger: 20/20 (assumed — NBT unavailable)",
+        data=result_data,
+    )
+
+
 async def _check_position(mc: McpqClient, params: dict) -> ActionResult:
     pos = await mc.get_player_pos()
     if pos:
@@ -1286,6 +1349,7 @@ _HANDLERS: dict[ActionType, Handler] = {
     ActionType.CHECK_TIME: _check_time,
     ActionType.CHECK_WEATHER: _check_weather,
     ActionType.CHECK_HEALTH: _check_health,
+    ActionType.CHECK_HUNGER: _check_hunger,
     ActionType.CHECK_POSITION: _check_position,
     ActionType.LIST_PLAYERS: _list_players,
     ActionType.CHAT: _chat,

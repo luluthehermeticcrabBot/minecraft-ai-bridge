@@ -331,6 +331,33 @@ class TestInformation:
         result = await execute_action(mock_mc, ActionType.CHECK_HEALTH, {})
         assert result.success is True
 
+    async def test_check_hunger(self, mock_mc):
+        """Hunger action should always succeed and report a /20 value."""
+        result = await execute_action(mock_mc, ActionType.CHECK_HUNGER, {})
+        assert result.success is True
+        assert "hunger" in result.message.lower()
+        assert "/20" in result.message
+
+    async def test_check_hunger_with_player_nbt(self, mock_mc):
+        """Hunger should reflect the NBT foodLevel when available."""
+        mock_mc.set_player_nbt("foodLevel", 7)
+        result = await execute_action(mock_mc, ActionType.CHECK_HUNGER, {})
+        assert result.success is True
+        assert "7/20" in result.message
+
+    async def test_check_hunger_starving(self, mock_mc):
+        """Hunger at 0 should still report validly (no clamping error)."""
+        mock_mc.set_player_nbt("foodLevel", 0)
+        result = await execute_action(mock_mc, ActionType.CHECK_HUNGER, {})
+        assert result.success is True
+        assert "0/20" in result.message
+
+    async def test_check_hunger_default_when_unset(self, mock_mc):
+        """With no NBT, hunger defaults to 20/20 (assumed)."""
+        result = await execute_action(mock_mc, ActionType.CHECK_HUNGER, {})
+        assert result.success is True
+        assert "20/20" in result.message
+
     async def test_check_position(self, mock_mc):
         mock_mc.set_position(42.0, 65.0, 100.0)
         result = await execute_action(mock_mc, ActionType.CHECK_POSITION, {})
