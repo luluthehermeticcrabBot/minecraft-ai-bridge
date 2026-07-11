@@ -154,13 +154,13 @@ class OpenAIClient(LLMClient):
     ) -> None:
         from openai import AsyncOpenAI
 
-        kwargs = {"api_key": api_key}
+        kwargs: dict[str, object] = {"api_key": api_key}
         if base_url:
             kwargs["base_url"] = base_url
         if default_headers:
             kwargs["default_headers"] = default_headers
 
-        self._client = AsyncOpenAI(**kwargs)
+        self._client = AsyncOpenAI(**kwargs)  # type: ignore[arg-type]
         self._model = model
         self._temperature = temperature
         self._max_tokens = max_tokens
@@ -183,8 +183,8 @@ class OpenAIClient(LLMClient):
                 tools=[ACTION_TOOL],
                 tool_choice=tool_choice,
                 temperature=self._temperature,
-                max_tokens=self._max_tokens,
-            )
+                max_tokens=self._max_tokens,  # type: ignore[arg-type]
+            )  # type: ignore[arg-type]
         except Exception as exc:
             logger.error("OpenAI API call failed: %s", exc)
             return _make_wait_response(f"API error: {exc}. Waiting and retrying.")
@@ -302,7 +302,7 @@ class AnthropicClient(LLMClient):
                 tools=[tool_config],
                 tool_choice={"type": "auto"} if tool_choice == "auto" else None,
                 temperature=self._temperature,
-                max_tokens=self._max_tokens,
+                max_tokens=self._max_tokens,  # type: ignore[arg-type]
             )
         except Exception as exc:
             logger.error("Anthropic API call failed: %s", exc)
@@ -545,7 +545,7 @@ class OpenRouterClient(LLMClient):
                 tools=[ACTION_TOOL],
                 tool_choice=tool_choice,
                 temperature=self._temperature,
-                max_tokens=self._max_tokens,
+                max_tokens=self._max_tokens,  # type: ignore[arg-type]
             )
         except Exception as exc:
             logger.error("OpenRouter API call failed: %s", exc)

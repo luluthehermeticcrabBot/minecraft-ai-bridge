@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from mcpq import Minecraft, Vec3
@@ -65,6 +66,7 @@ class McpqClient:
                     port=self._port,
                 )
                 # Verify the connection by fetching the Minecraft version
+                assert self._mc is not None
                 version = await self._run(self._mc.getMinecraftVersion)
                 server = await self._run(self._mc.getServerVersion)
                 logger.info(
@@ -103,7 +105,7 @@ class McpqClient:
 
     # ── Thread-pool helper ────────────────────────────────────────────
 
-    async def _run(self, func: callable, *args: Any, **kwargs: Any) -> Any:
+    async def _run(self, func: "Callable", *args: Any, **kwargs: Any) -> Any:
         """Run a synchronous function in a thread-pool."""
         return await asyncio.to_thread(func, *args, **kwargs)
 

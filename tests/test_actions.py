@@ -5,22 +5,17 @@ from __future__ import annotations
 import pytest
 
 from minecraft_ai_bridge.minecraft.actions import (
-    ActionResult,
     ActionType,
     _can_move_to,
-    _check_health,
     _cmd,
     _damage_hit_anything,
-    _drop_item,
     _is_artificial,
     _is_hazard,
     _is_passable,
-    _walk_toward,
     execute_action,
 )
 
 # Only async TestActionHandlers tests are individually marked with @pytest.mark.asyncio
-
 
 
 # ── execute_action dispatch ──────────────────────────────────────────────
@@ -97,8 +92,8 @@ class TestMovement:
         # and (0, 65, 0) for feet —> stone → blocked
         # So it tries (0, 66, 0) one level up — air at (0, 66, 0) and air at (0, 67, 0)
         await mock_mc.set_block("stone", 0, 65, 0)  # Feet level — blocked
-        await mock_mc.set_block("air", 0, 66, 0)    # Head level — passable
-        await mock_mc.set_block("air", 0, 67, 0)    # Head + 1 — passable for auto-step
+        await mock_mc.set_block("air", 0, 66, 0)  # Head level — passable
+        await mock_mc.set_block("air", 0, 67, 0)  # Head + 1 — passable for auto-step
         result = await execute_action(mock_mc, ActionType.MOVE_FORWARD, {"steps": 1})
         # Should auto-step since head+1 is passable
         assert result.success is True
@@ -124,21 +119,21 @@ class TestMovement:
         result = await execute_action(mock_mc, ActionType.TURN_LEFT, {})
         assert result.success is True
         assert "left" in result.message.lower()
-        # Verify execute-based rotation command
-        mock_mc.assert_command_contains("execute as AIBot at @s run tp @s ~ ~ ~ ~-15 ~")
+        # Verify rotation command (tp @p with yaw rotation)
+        mock_mc.assert_command_contains("tp AIBot ~ ~ ~ ~-15 ~")
 
     async def test_turn_right(self, mock_mc):
         result = await execute_action(mock_mc, ActionType.TURN_RIGHT, {})
         assert result.success is True
         assert "right" in result.message.lower()
-        # Verify execute-based rotation command
-        mock_mc.assert_command_contains("execute as AIBot at @s run tp @s ~ ~ ~ ~15 ~")
+        # Verify rotation command (tp @p with yaw rotation)
+        mock_mc.assert_command_contains("tp AIBot ~ ~ ~ ~15 ~")
 
     async def test_jump(self, mock_mc):
         result = await execute_action(mock_mc, ActionType.JUMP, {})
         assert result.success is True
-        # Verify execute-based jump command
-        mock_mc.assert_command_contains("execute as AIBot at @s run tp @s ~ ~1 ~")
+        # Verify jump command (tp @p with relative y offset)
+        mock_mc.assert_command_contains("tp AIBot ~ ~1 ~")
 
     async def test_sprint_default(self, mock_mc):
         """Sprint with default steps should succeed."""

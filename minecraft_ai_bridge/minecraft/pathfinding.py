@@ -191,7 +191,9 @@ class Pathfinder:
 
         # Final attempt at original level
         result = await self._scan_at_y(min_x, max_x, min_z, max_z, y_level)
-        return result, y_level
+        if result is not None:
+            return result, y_level
+        return None, None
 
     async def _scan_at_y(
         self,
@@ -354,7 +356,7 @@ class Pathfinder:
     @staticmethod
     def _reconstruct_path(
         came_from: dict[tuple[int, int], tuple[int, int] | None],
-        current: tuple[int, int],
+        current: tuple[int, int] | None,
     ) -> list[tuple[int, int]]:
         """Walk backward from current to start, return forward path."""
         path: list[tuple[int, int]] = []
