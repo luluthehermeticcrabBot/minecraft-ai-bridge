@@ -169,6 +169,7 @@ def format_state(state: dict) -> str:
     if inv_list and isinstance(inv_list, list):
         # Group by item name for a compact summary
         from collections import Counter
+
         counts: Counter = Counter()
         for slot in inv_list:
             if isinstance(slot, dict):

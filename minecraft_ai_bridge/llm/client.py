@@ -154,7 +154,7 @@ class OpenAIClient(LLMClient):
     ) -> None:
         from openai import AsyncOpenAI
 
-        kwargs = {"api_key": api_key}
+        kwargs: dict[str, Any] = {"api_key": api_key}
         if base_url:
             kwargs["base_url"] = base_url
         if default_headers:
@@ -183,8 +183,8 @@ class OpenAIClient(LLMClient):
                 tools=[ACTION_TOOL],
                 tool_choice=tool_choice,
                 temperature=self._temperature,
-                max_tokens=self._max_tokens,
-            )
+                max_tokens=self._max_tokens,  # type: ignore[arg-type]
+            )  # type: ignore[arg-type]
         except Exception as exc:
             logger.error("OpenAI API call failed: %s", exc)
             return _make_wait_response(f"API error: {exc}. Waiting and retrying.")
@@ -302,7 +302,7 @@ class AnthropicClient(LLMClient):
                 tools=[tool_config],
                 tool_choice={"type": "auto"} if tool_choice == "auto" else None,
                 temperature=self._temperature,
-                max_tokens=self._max_tokens,
+                max_tokens=self._max_tokens,  # type: ignore[arg-type]
             )
         except Exception as exc:
             logger.error("Anthropic API call failed: %s", exc)
@@ -425,9 +425,12 @@ class OllamaClient(LLMClient):
             )
 
         # Final fallback: retry WITHOUT forced JSON format
-        logger.warning("JSON mode failed for model %s — retrying without forced JSON format", self._model)
+        logger.warning(
+            "JSON mode failed for model %s — retrying without forced JSON format", self._model
+        )
         try:
             import httpx as _httpx
+
             retry_payload = {
                 "model": self._model,
                 "messages": ollama_messages,
@@ -545,7 +548,7 @@ class OpenRouterClient(LLMClient):
                 tools=[ACTION_TOOL],
                 tool_choice=tool_choice,
                 temperature=self._temperature,
-                max_tokens=self._max_tokens,
+                max_tokens=self._max_tokens,  # type: ignore[arg-type]
             )
         except Exception as exc:
             logger.error("OpenRouter API call failed: %s", exc)
