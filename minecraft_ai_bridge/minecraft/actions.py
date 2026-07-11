@@ -17,7 +17,7 @@ from .mc_api import McpqClient
 logger = logging.getLogger(__name__)
 
 
-class ActionType(Enum):
+class ActionType(str, Enum):
     """Every action the LLM can take.  Keep this list concise so the
     LLM's action space stays manageable."""
 

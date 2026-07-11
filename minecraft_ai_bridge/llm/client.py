@@ -154,13 +154,13 @@ class OpenAIClient(LLMClient):
     ) -> None:
         from openai import AsyncOpenAI
 
-        kwargs: dict[str, object] = {"api_key": api_key}
+        kwargs: dict[str, Any] = {"api_key": api_key}
         if base_url:
             kwargs["base_url"] = base_url
         if default_headers:
             kwargs["default_headers"] = default_headers
 
-        self._client = AsyncOpenAI(**kwargs)  # type: ignore[arg-type]
+        self._client = AsyncOpenAI(**kwargs)
         self._model = model
         self._temperature = temperature
         self._max_tokens = max_tokens
@@ -425,9 +425,12 @@ class OllamaClient(LLMClient):
             )
 
         # Final fallback: retry WITHOUT forced JSON format
-        logger.warning("JSON mode failed for model %s — retrying without forced JSON format", self._model)
+        logger.warning(
+            "JSON mode failed for model %s — retrying without forced JSON format", self._model
+        )
         try:
             import httpx as _httpx
+
             retry_payload = {
                 "model": self._model,
                 "messages": ollama_messages,

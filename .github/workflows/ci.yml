@@ -34,10 +34,17 @@ jobs:
         run: ruff format --check minecraft_ai_bridge/ tests/
 
       - name: Type check with mypy
-        # Temporarily disabled due to pre-existing type errors in llm/client.py
-        # and other files that use OpenAI SDK with complex type signatures
-        # run: mypy minecraft_ai_bridge/ --ignore-missing-imports
-        run: echo "Type checking skipped - pre-existing OpenAI SDK type issues"
+        # TODO(#mypy-reenable): mypy is currently skipped because the
+        # `llm/client.py` kwargs annotation needs to be reconciled with
+        # the OpenAI SDK's strict types. See project tracking issue
+        # before re-enabling. Until then, this job is a no-op so the
+        # workflow stays green.
+        run: |
+          if [ -n "${{ vars.MYPY_ENABLED }}" ]; then
+            mypy minecraft_ai_bridge/ --ignore-missing-imports
+          else
+            echo "Type checking skipped (set MYPY_ENABLED var to re-enable)"
+          fi
 
       - name: Check import sorting
         run: ruff check --select I minecraft_ai_bridge/ tests/
@@ -69,9 +76,10 @@ jobs:
   integration:
     name: Integration Tests
     runs-on: ubuntu-latest
-    # Only run on main branch or when explicitly triggered
-    # Requires OPENROUTER_API_KEY secret to be set
-    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
+    # Run whenever the OPENROUTER_API_KEY secret is configured.
+    # This includes pushes to main AND pull requests (so contributors
+    # can get integration feedback if they've set up the secret).
+    if: ${{ secrets.OPENROUTER_API_KEY != '' }}
     steps:
       - uses: actions/checkout@v4
 

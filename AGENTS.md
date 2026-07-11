@@ -52,6 +52,7 @@
 
 ### Documentation
 - `README.md` — complete project overview
+- `ROADMAP.md` — current priorities, completed milestones, release plan
 - `docs/ARCHITECTURE.md` — 3-layer architecture deep dive
 - `docs/SETUP.md` — installation guide (Docker + local)
 - `docs/CLI.md` — CLI reference
@@ -110,7 +111,7 @@ Some LLMs (especially smaller/local ones) can't reliably output structured JSON 
 
 ### P0: None (Testing Complete)
 The 0.5.0 release completed the testing milestone:
-- **Unit tests** (160): MockMcpqClient covers all 24 actions, observer parsing, memory, goal fallback plans, config, inventory manager, chat commands
+- **Unit tests** (190): MockMcpqClient covers all 24 actions, observer parsing, memory, goal fallback plans, config, inventory manager, chat commands, pathfinding
 - **Integration tests** (22): Full think-act-observe loop with real MCPQ server + real LLM inference (OpenRouter `openai/gpt-oss-20b`). Covers teleport, exploration, disconnect handling, fallback decomposition, failure counting, memory recording, chat command stop, and inventory creation.
 - **Goal-verification assertions**: Integration tests verify agent behavior via:
   - `action_taken(orch, *names) → bool` — checks if the agent performed a specific action (parses `MemoryEntry.raw`)
@@ -134,7 +135,8 @@ The 0.5.0 release completed the testing milestone:
 - Maybe control through MCPQ if the plugin adds it, or use Minecraft's `/execute` with `facing` + `move`
 
 ### P4: Infrastructure
-- Set up GitHub Actions CI (lint + type check + test)
+- Set up GitHub Actions CI (lint + type check + test) — **partial**: CI runs lint + unit tests on every PR; integration tests gated on `OPENROUTER_API_KEY` secret. See `.github/workflows/ci.yml`.
+- Re-enable `mypy` in CI — **tracking**: mypy is currently skipped due to strict OpenAI/Anthropic SDK type signatures in `llm/client.py`. Job is wired up but no-op until `MYPY_ENABLED` repo variable is set. Track re-enablement as a follow-up issue.
 - Add `mypy` configuration to `pyproject.toml`
 - Consider adding `pre-commit` hooks
 - Publish to PyPI as `minecraft-ai-bridge`
@@ -171,7 +173,7 @@ The 0.5.0 release completed the testing milestone:
 | `docker-compose.yml` | Paper server + bridge services |
 | `docs/*.md` | Full documentation set |
 | `tests/conftest.py` | MockMcpqClient, MockLLMClient, test fixtures |
-| `tests/test_*.py` | Unit + integration tests (182 total) |
+| `tests/test_*.py` | Unit + integration tests (212 total: 190 unit + 22 integration) |
 | `AGENTS.md` | This file |
 
 ## Environment Info

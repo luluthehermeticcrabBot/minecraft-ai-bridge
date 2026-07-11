@@ -1,7 +1,7 @@
 # Project Roadmap
 
 > **Minecraft AI Bridge** - Development Roadmap and Priority Tracking
-> Last Updated: 2026-05-13
+> Last Updated: 2026-07-11
 
 This document outlines the development priorities, completed work, and future plans for the Minecraft AI Bridge project.
 
