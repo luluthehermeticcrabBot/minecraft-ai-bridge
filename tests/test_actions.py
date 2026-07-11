@@ -309,7 +309,44 @@ class TestInventory:
         # Unknown food returns (0, 0)
         assert _food_value("not_a_food") == (0.0, 0.0)
 
-    async def test_craft_item_failure(self, mock_mc):
+    async def test_heal_generic(self, mock_mc):
+        """Generic heal action (no item) should succeed with regen effects."""
+        from minecraft_ai_bridge.minecraft.actions import ActionType, execute_action
+
+        result = await execute_action(mock_mc, ActionType.HEAL, {})
+        assert result.success is True
+        assert "healed" in result.message.lower()
+        assert "regeneration" in result.message.lower()
+
+    async def test_heal_golden_apple(self, mock_mc):
+        """Golden apple should trigger absorption + instant health."""
+        from minecraft_ai_bridge.minecraft.actions import ActionType, execute_action
+
+        result = await execute_action(mock_mc, ActionType.HEAL, {"heal_item": "golden_apple"})
+        assert result.success is True
+        assert "absorption" in result.message.lower()
+        assert "instant_health" in result.message.lower()
+
+    async def test_heal_enchanted_golden_apple(self, mock_mc):
+        """Enchanted golden apple should also give fire_resistance + resistance."""
+        from minecraft_ai_bridge.minecraft.actions import ActionType, execute_action
+
+        result = await execute_action(
+            mock_mc, ActionType.HEAL, {"heal_item": "enchanted_golden_apple"}
+        )
+        assert result.success is True
+        assert "fire_resistance" in result.message.lower()
+        assert "resistance" in result.message.lower()
+
+    async def test_heal_records_item_in_data(self, mock_mc):
+        """The heal action should return which item was used."""
+        from minecraft_ai_bridge.minecraft.actions import ActionType, execute_action
+
+        result = await execute_action(mock_mc, ActionType.HEAL, {"heal_item": "golden_apple"})
+        assert result.data.get("heal_item") == "golden_apple"
+        assert isinstance(result.data.get("heal_effects"), list)
+
+    async def test_heal_craft_item_failure(self, mock_mc):
         """Test error handling when /give fails."""
         original_run = mock_mc.run_as_player
 

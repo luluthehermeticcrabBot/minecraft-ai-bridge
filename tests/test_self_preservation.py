@@ -604,3 +604,148 @@ class TestFindFoodFallbackPlan:
         assert len(root.sub_goals) == 8
         # The flee plan has a "Look for shelter" step
         assert any("shelter" in sg.description.lower() for sg in root.sub_goals)
+
+
+# ── Auto-heal ────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+class TestAutoHeal:
+    """When health is critically low AND golden apples are in inventory,
+    the layer should automatically heal via the HEAL action."""
+
+    def _world_with_inventory(self, health: float, items: list[dict]) -> WorldState:
+        from minecraft_ai_bridge.minecraft.observer import InventorySlot
+
+        world = WorldState(health=health)
+        world.inventory = [
+            InventorySlot(
+                item_id=item.get("item_id", "stone"),
+                count=item.get("count", 1),
+                slot=item.get("slot", i),
+            )
+            for i, item in enumerate(items)
+        ]
+        return world
+
+    async def test_no_heal_when_health_fine(self, mock_mc):
+        layer = _make_layer(mock_mc)
+        world = self._world_with_inventory(
+            health=20.0, items=[{"item_id": "golden_apple", "count": 1}]
+        )
+        result = await layer.evaluate(world)
+        assert result is None  # health is fine, no heal needed
+
+    async def test_no_heal_when_inventory_has_no_gapples(self, mock_mc):
+        layer = _make_layer(mock_mc)
+        world = self._world_with_inventory(health=3.0, items=[{"item_id": "bread", "count": 1}])
+        result = await layer.evaluate(world)
+        assert result is None  # no golden apples to heal with
+
+    async def test_heal_with_golden_apple_when_critical(self, mock_mc):
+        layer = _make_layer(mock_mc)
+        world = self._world_with_inventory(
+            health=2.0, items=[{"item_id": "golden_apple", "count": 1}]
+        )
+        result = await layer.evaluate(world)
+        assert result is not None
+        assert result.action.value == "heal"
+        assert result.data.get("heal_item") == "golden_apple"
+
+    async def test_heal_prefers_enchanted_golden_apple(self, mock_mc):
+        """When both golden and enchanted golden apples are available,
+        use the enchanted one (highest priority)."""
+        layer = _make_layer(mock_mc)
+        world = self._world_with_inventory(
+            health=2.0,
+            items=[
+                {"item_id": "golden_apple", "count": 1},
+                {"item_id": "enchanted_golden_apple", "count": 1},
+            ],
+        )
+        result = await layer.evaluate(world)
+        assert result is not None
+        assert result.data.get("heal_item") == "enchanted_golden_apple"
+
+    async def test_heal_disabled_via_config(self, mock_mc):
+        layer = _make_layer(
+            mock_mc,
+            config=PreservationConfig(
+                enable_auto_heal=False,
+                health_critical_threshold=4.0,
+            ),
+        )
+        world = self._world_with_inventory(
+            health=3.0, items=[{"item_id": "golden_apple", "count": 1}]
+        )
+        result = await layer.evaluate(world)
+        assert result is None
+
+
+# ── Day/night awareness ─────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+class TestDayNightAwareness:
+    """At night the layer should record a memory fact so the LLM
+    sees it in context."""
+
+    async def test_no_fact_during_daytime(self, mock_mc):
+        layer = _make_layer(mock_mc)
+        world = WorldState(time_raw="6000")  # noon
+        await layer.evaluate(world)
+        facts = " ".join(layer._memory.facts).lower()
+        assert "night" not in facts
+
+    async def test_fact_at_night(self, mock_mc):
+        layer = _make_layer(mock_mc)
+        world = WorldState(time_raw="14000")  # night
+        await layer.evaluate(world)
+        facts = " ".join(layer._memory.facts).lower()
+        assert "night" in facts
+
+    async def test_fact_at_midnight(self, mock_mc):
+        layer = _make_layer(mock_mc)
+        world = WorldState(time_raw="18000")  # midnight
+        await layer.evaluate(world)
+        facts = " ".join(layer._memory.facts).lower()
+        assert "night" in facts
+
+
+# ── Critical health threshold ────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+class TestCriticalHealthThreshold:
+    """At or below critical_health_threshold (default 2.0), the agent
+    should always flee — even from a single mob."""
+
+    def _gm_with_one_subgoal(self) -> GoalManager:
+        from minecraft_ai_bridge.llm.models import AgentGoal
+
+        gm = GoalManager(llm_client=None)
+        gm._root = AgentGoal(description="parent", depth=0)
+        return gm
+
+    async def test_single_mob_at_critical_health_flees(self, mock_mc):
+        """1 mob but health at 2.0 (critical threshold) → flee."""
+        layer = _make_layer(mock_mc)
+        layer._goals = self._gm_with_one_subgoal()
+        await layer.evaluate(_world(health=20.0))
+        mock_mc.set_hostile_mobs(["zombie"])
+        mock_mc.set_hurt_by_entity(True)
+        result = await layer.evaluate(_world(health=2.0))
+        assert result is None  # flee returns None, injects sub-goal
+        assert len(layer._goals._root.sub_goals) == 1
+        assert "flee" in layer._goals._root.sub_goals[0].description.lower()
+
+    async def test_single_mob_above_critical_health_fights(self, mock_mc):
+        """1 mob at health 6.0 (above critical, above flee) → fight."""
+        layer = _make_layer(mock_mc)
+        layer._goals = self._gm_with_one_subgoal()
+        await layer.evaluate(_world(health=20.0))
+        mock_mc.set_hostile_mobs(["zombie"])
+        mock_mc.set_hurt_by_entity(True)
+        result = await layer.evaluate(_world(health=6.0))
+        assert result is not None  # fight
+        assert result.action.value == "attack"

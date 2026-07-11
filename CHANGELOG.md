@@ -27,6 +27,26 @@ section. This is enforced by the AGENTS.md "CHANGELOG.md" rule.
 
 ### Added
 
+- **Survival series — survival mode tuning** (slice 3 of post-survival work):
+  - `ActionType.HEAL` action handler that applies `/effect give @p
+    regeneration 30 2` plus golden-apple-specific bonus effects
+    (absorption 120s, instant_health II, fire_resistance, resistance
+    for enchanted golden apples). Generic heal (no item) just
+    applies regeneration.
+  - **Auto-heal** in `SelfPreservationLayer` — when health drops
+    below `health_critical_threshold` (default 4.0) AND a healing
+    item is in inventory, triggers the HEAL action without waiting
+    for the LLM. Priority: enchanted_golden_apple > golden_apple >
+    golden_carrot.
+  - **Critical health threshold** (`critical_health_threshold`,
+    default 2.0) — below this, the agent always flees even from a
+    single mob.
+  - **Day/night awareness** — when the in-game time enters the
+    night range (13 000–24 000 ticks), records a memory fact so
+    the LLM sees it on the next turn and can choose defensive action.
+  - `enable_auto_heal` and `enable_day_night_awareness` flags
+    (both default True).
+  - SYSTEM_PROMPT updated to document the new `heal` action.
 - **Survival series — context-aware combat** (PR #9, slice 2 of post-survival work):
   - `_MOB_THREAT_LEVELS` table in `minecraft/actions.py` — per-mob
     threat classification (`low` / `medium` / `high` / `critical`)
