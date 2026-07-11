@@ -36,6 +36,7 @@ class MockMcpqClient:
         self._player_nbt: dict[str, Any] = {}
         self._next_get_biome: str | Exception = "plains"
         self._chat_events_backlog: list[Any] = []
+        self._hostile_mobs: list[str] = []
 
     # ── Pre-configuration helpers ─────────────────────────────────────
 
@@ -68,6 +69,15 @@ class MockMcpqClient:
 
     def set_player_nbt(self, key: str, value: Any) -> None:
         self._player_nbt[key] = value
+
+    def set_hostile_mobs(self, mob_types: list[str]) -> None:
+        """Configure which hostile mobs are 'present' for scan_entities.
+
+        The mock's ``_run_command_blocking`` checks whether the mob
+        type appears in this list when responding to ``/execute if
+        entity @e[type=minecraft:X,...]`` queries.
+        """
+        self._hostile_mobs: list[str] = list(mob_types)
 
     # ── Assertions ────────────────────────────────────────────────────
 
@@ -185,6 +195,19 @@ class MockMcpqClient:
             return f"{self._time}"
         if cmd.startswith("weather query"):
             return self._weather
+        if cmd.startswith("execute if entity @e[type=minecraft:"):
+            # scan_entities-style query — extract the mob type and check
+            # whether the mock has it configured as present. The
+            # command is "execute if entity @e[type=minecraft:<mob>,
+            # distance=..N,limit=1] run say __mob_<mob>__".
+            try:
+                mob = cmd.split("type=minecraft:", 1)[1].split(",", 1)[0]
+            except (IndexError, ValueError):
+                return ""
+            marker = f"__mob_{mob}__"
+            if mob in self._hostile_mobs:
+                return f"[Server] {marker}"
+            return ""
         if cmd.startswith("execute positioned"):
             return "Located biome plains at [0, 65, 0]"
         if "give" in cmd and ("aibot" in cmd or "@p" in cmd):
