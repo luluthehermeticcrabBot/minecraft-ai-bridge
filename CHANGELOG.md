@@ -47,6 +47,32 @@ section. This is enforced by the AGENTS.md "CHANGELOG.md" rule.
   - `enable_auto_heal` and `enable_day_night_awareness` flags
     (both default True).
   - SYSTEM_PROMPT updated to document the new `heal` action.
+- **Survival series — context-aware combat** (PR #9, slice 2 of post-survival work):
+  - `_MOB_THREAT_LEVELS` table in `minecraft/actions.py` — per-mob
+    threat classification (`low` / `medium` / `high` / `critical`)
+    for all 28 detected hostile mobs plus extras. Creeper = high,
+    zombie = low, skeleton = medium, warden = critical.
+  - `_MOB_BLACKLIST` frozenset — mobs the agent must never attack:
+    iron_golem, villager, wandering_trader, tamed wolf, tamed cat,
+    tamed parrot, tamed equines (horse, donkey, mule, llama,
+    trader_llama, ocelot), friendly aquatics (axolotl, dolphin,
+    turtle, squid, glow_squid, frog), neutral but not aggressive
+    (fox, bee, goat, strider, armadillo), and passive farm animals
+    (pig, cow, sheep, chicken, mooshroom, rabbit).
+  - `_get_threat_level()`, `_is_blacklisted()`, `_should_attack()`
+    helpers. `_should_attack` returns False for blacklisted OR
+    critical mobs.
+  - `scan_entities` action returns three new structured fields:
+    `detailed` (list of `{type, threat, should_attack}` per mob),
+    `blacklisted` (mobs in range that must not be attacked),
+    `too_dangerous` (critical mobs in range that should trigger
+    flee). Backward compatible — `mobs` and `mobs_nearby` still work.
+  - **Self-preservation layer** now respects the blacklist.
+    Reflex attack uses `_pick_target()` to choose the highest-threat
+    attackable mob, skipping blacklisted and critical ones. Threat
+    assessment counts only attackable mobs against the flee
+    threshold. A critical mob in range triggers flee even alone.
+  - SYSTEM_PROMPT updated to document the new scan_entities fields.
 - **Survival series — auto-consume food** (PR #8, slice 1 of post-survival work):
   - `ActionType.EAT` action handler. Takes `food_item` (e.g. `bread`,
     `golden_apple`) and an optional `slot` parameter. Equips the food

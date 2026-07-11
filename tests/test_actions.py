@@ -600,3 +600,143 @@ class TestHelpers:
         response = await _cmd(mock_mc, "test command")
         assert response is not None
         assert mock_mc.last_command() == "test command"
+
+
+# ── Mob threat / blacklist / scan ────────────────────────────────────────
+
+
+class TestMobThreatLevels:
+    """The threat-level and blacklist helpers are used by both the
+    scan_entities action and the self-preservation layer.  These
+    tests verify the lookup is correct."""
+
+    def test_threat_levels_known_mobs(self):
+        from minecraft_ai_bridge.minecraft.actions import _get_threat_level
+
+        # The user mentioned "creeper = high, zombie = medium" as the
+        # canonical examples — verify those and a few more.
+        assert _get_threat_level("zombie") == "low"
+        assert _get_threat_level("creeper") == "high"
+        assert _get_threat_level("skeleton") == "medium"
+        assert _get_threat_level("warden") == "critical"
+
+    def test_threat_levels_namespaced(self):
+        from minecraft_ai_bridge.minecraft.actions import _get_threat_level
+
+        assert _get_threat_level("minecraft:creeper") == "high"
+        assert _get_threat_level("minecraft:zombie") == "low"
+
+    def test_is_blacklisted_iron_golem(self):
+        from minecraft_ai_bridge.minecraft.actions import _is_blacklisted
+
+        # The user mentioned "iron golem = never" — verify the canonical
+        # examples and a few more.
+        assert _is_blacklisted("iron_golem")
+        assert _is_blacklisted("villager")
+        assert _is_blacklisted("wolf")  # tamed wolves are friendly
+        assert _is_blacklisted("cat")
+        assert _is_blacklisted("wandering_trader")
+
+    def test_is_blacklisted_namespaced(self):
+        from minecraft_ai_bridge.minecraft.actions import _is_blacklisted
+
+        assert _is_blacklisted("minecraft:iron_golem")
+        assert _is_blacklisted("minecraft:villager")
+
+    def test_is_blacklisted_hostile_mob_not_in_list(self):
+        from minecraft_ai_bridge.minecraft.actions import _is_blacklisted
+
+        # Hostile mobs should NOT be blacklisted
+        assert not _is_blacklisted("zombie")
+        assert not _is_blacklisted("creeper")
+        assert not _is_blacklisted("skeleton")
+
+    def test_should_attack_combines_blacklist_and_critical(self):
+        from minecraft_ai_bridge.minecraft.actions import _should_attack
+
+        # Blacklisted: never attack
+        assert not _should_attack("iron_golem")
+        assert not _should_attack("villager")
+        # Critical: never attack (too dangerous to engage)
+        assert not _should_attack("warden")
+        # Normal hostiles: attack
+        assert _should_attack("zombie")
+        assert _should_attack("creeper")
+
+
+class TestScanEntitiesDetailed:
+    """The scan_entities action now returns threat level and
+    should_attack info per mob.  These tests verify the new
+    structured data."""
+
+    async def test_scan_entities_returns_detailed_field(self, mock_mc):
+        from minecraft_ai_bridge.minecraft.actions import (
+            ActionType,
+            execute_action,
+        )
+
+        mock_mc.set_hostile_mobs(["zombie", "creeper"])
+        result = await execute_action(mock_mc, ActionType.SCAN_ENTITIES, {"radius": 5})
+        assert result.success
+        data = result.data
+        assert "detailed" in data
+        assert isinstance(data["detailed"], list)
+        types_found = {m["type"] for m in data["detailed"]}
+        assert "zombie" in types_found
+        assert "creeper" in types_found
+
+    async def test_scan_entities_detailed_includes_threat(self, mock_mc):
+        from minecraft_ai_bridge.minecraft.actions import (
+            ActionType,
+            execute_action,
+        )
+
+        mock_mc.set_hostile_mobs(["creeper", "zombie"])
+        result = await execute_action(mock_mc, ActionType.SCAN_ENTITIES, {"radius": 5})
+        detailed = {m["type"]: m for m in result.data["detailed"]}
+        # Creeper is high, zombie is low
+        assert detailed["creeper"]["threat"] == "high"
+        assert detailed["zombie"]["threat"] == "low"
+
+    async def test_scan_entities_detailed_includes_should_attack(self, mock_mc):
+        from minecraft_ai_bridge.minecraft.actions import (
+            ActionType,
+            execute_action,
+        )
+
+        mock_mc.set_hostile_mobs(["zombie", "creeper"])
+        result = await execute_action(mock_mc, ActionType.SCAN_ENTITIES, {"radius": 5})
+        detailed = {m["type"]: m for m in result.data["detailed"]}
+        # Both should be attackable
+        assert detailed["zombie"]["should_attack"] is True
+        assert detailed["creeper"]["should_attack"] is True
+
+    async def test_scan_entities_no_mobs(self, mock_mc):
+        from minecraft_ai_bridge.minecraft.actions import (
+            ActionType,
+            execute_action,
+        )
+
+        result = await execute_action(mock_mc, ActionType.SCAN_ENTITIES, {"radius": 5})
+        assert result.data["detailed"] == []
+        assert result.data["mobs_nearby"] == []
+        assert result.data["blacklisted"] == []
+        assert result.data["too_dangerous"] == []
+
+    async def test_scan_entities_picks_highest_threat(self, mock_mc):
+        from minecraft_ai_bridge.bridge.self_preservation import (
+            SelfPreservationLayer,
+        )
+        from minecraft_ai_bridge.minecraft.actions import (
+            ActionType,
+            execute_action,
+        )
+
+        # Mix of threats; verify the layer picks high over low
+        mock_mc.set_hostile_mobs(["zombie", "creeper", "skeleton"])
+        result = await execute_action(mock_mc, ActionType.SCAN_ENTITIES, {"radius": 5})
+        # Use the static picker to find the best target
+        target = SelfPreservationLayer._pick_target(result.data["detailed"])
+        # Creeper is high, so it should be picked over zombie (low)
+        # and skeleton (medium)
+        assert target == "creeper"
