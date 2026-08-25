@@ -196,6 +196,23 @@ class TestAutoConsume:
         result = await layer.evaluate(world)
         assert result is None
 
+    async def test_consume_runs_when_it_is_the_only_enabled_feature(self, mock_mc):
+        config = PreservationConfig(
+            enable_reflex_attack=False,
+            enable_reflex_flee=False,
+            enable_auto_find_food=False,
+            enable_auto_consume=True,
+            enable_auto_heal=False,
+            enable_day_night_awareness=False,
+        )
+        layer = _make_layer(mock_mc, config=config)
+        world = self._world_with_inventory(hunger=3, items=[{"item_id": "bread", "count": 1}])
+
+        result = await layer.evaluate(world)
+
+        assert result is not None
+        assert result.action.value == "eat"
+
     async def test_consume_records_memory_fact(self, mock_mc):
         layer = _make_layer(mock_mc)
         memory = layer._memory  # type: ignore[attr-defined]
@@ -681,6 +698,25 @@ class TestAutoHeal:
         result = await layer.evaluate(world)
         assert result is None
 
+    async def test_heal_runs_when_it_is_the_only_enabled_feature(self, mock_mc):
+        config = PreservationConfig(
+            enable_reflex_attack=False,
+            enable_reflex_flee=False,
+            enable_auto_find_food=False,
+            enable_auto_consume=False,
+            enable_auto_heal=True,
+            enable_day_night_awareness=False,
+        )
+        layer = _make_layer(mock_mc, config=config)
+        world = self._world_with_inventory(
+            health=3.0, items=[{"item_id": "golden_apple", "count": 1}]
+        )
+
+        result = await layer.evaluate(world)
+
+        assert result is not None
+        assert result.action.value == "heal"
+
 
 # ── Day/night awareness ─────────────────────────────────────────────────
 
@@ -710,6 +746,26 @@ class TestDayNightAwareness:
         await layer.evaluate(world)
         facts = " ".join(layer._memory.facts).lower()
         assert "night" in facts
+
+    async def test_awareness_runs_when_it_is_the_only_enabled_feature(self, mock_mc):
+        config = PreservationConfig(
+            enable_reflex_attack=False,
+            enable_reflex_flee=False,
+            enable_auto_find_food=False,
+            enable_auto_consume=False,
+            enable_auto_heal=False,
+            enable_day_night_awareness=True,
+        )
+        layer = _make_layer(mock_mc, config=config)
+        await layer.evaluate(WorldState(time_raw="14000"))
+
+        assert any("night" in fact.lower() for fact in layer._memory.facts)
+
+    async def test_tick_24000_is_daytime(self, mock_mc):
+        layer = _make_layer(mock_mc)
+        await layer.evaluate(WorldState(time_raw="24000"))
+
+        assert not any("night" in fact.lower() for fact in layer._memory.facts)
 
 
 # ── Critical health threshold ────────────────────────────────────────────

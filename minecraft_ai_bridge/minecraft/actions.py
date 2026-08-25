@@ -1335,6 +1335,14 @@ _MOB_BLACKLIST: frozenset[str] = frozenset(
 )
 
 
+# Stable scan order: retain the existing hostile order, then add threat-table
+# and blacklist entries that are not already present.  The blacklist is sorted
+# because frozenset iteration order is not stable across processes.
+_SCAN_ENTITY_TYPES: tuple[str, ...] = tuple(
+    dict.fromkeys((*_HOSTILE_MOBS, *_MOB_THREAT_LEVELS, *sorted(_MOB_BLACKLIST)))
+)
+
+
 def _get_threat_level(mob_type: str) -> str:
     """Return the threat level for a mob type.
 
@@ -1413,7 +1421,7 @@ async def _scan_entities(mc: McpqClient, params: dict) -> ActionResult:
     # Mob types that are too dangerous to engage (e.g. warden).
     too_dangerous: list[str] = []
 
-    for mob in _HOSTILE_MOBS:
+    for mob in _SCAN_ENTITY_TYPES:
         try:
             marker = f"__mob_{mob}__"
             cmd = (

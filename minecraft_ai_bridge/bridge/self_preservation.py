@@ -138,6 +138,9 @@ class SelfPreservationLayer:
             self._config.enable_reflex_attack
             or self._config.enable_reflex_flee
             or self._config.enable_auto_find_food
+            or self._config.enable_auto_consume
+            or self._config.enable_auto_heal
+            or self._config.enable_day_night_awareness
         )
         if not any_enabled:
             return None
@@ -593,7 +596,7 @@ class SelfPreservationLayer:
             return
 
         # Minecraft day cycle: 0 = dawn, ~6000 = noon, ~13000 = dusk, ~18000 = midnight
-        if 13000 <= ticks <= 24000:
+        if 13000 <= ticks < 24000:
             self._memory.remember_fact(
                 f"It's night-time (in-game time {ticks}). "
                 "Night is dangerous — hostile mobs spawn in the dark. "
