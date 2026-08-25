@@ -150,6 +150,12 @@ section. This is enforced by the AGENTS.md "CHANGELOG.md" rule.
   environmental damage (fall, cactus, fire, etc.). This is a
   behavioral change from the first draft of the self-preservation
   layer, which reflex-attacked on any health drop.
+- Observer hardening now parses inventory SNBT independent of field order,
+  preserves valid partial compounds, rejects invalid health values without
+  guessing, and reports custom max-health output separately.
+- Biome detection now uses authoritative `/execute if biome` probes only and
+  caches successful and `"unknown"` results per chunk to avoid repeated
+  bounded probe sequences.
 
 ### Fixed
 

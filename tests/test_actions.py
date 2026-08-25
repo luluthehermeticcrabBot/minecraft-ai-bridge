@@ -512,6 +512,39 @@ class TestInformation:
         result = await execute_action(mock_mc, ActionType.CHECK_HEALTH, {})
         assert result.success is True
 
+    async def test_check_health_preserves_zero_health(self, mock_mc, monkeypatch):
+        original = mock_mc._run_command_blocking
+
+        async def responses(command: str) -> str:
+            if command.startswith("data get entity AIBot Health"):
+                return "Health: 0.0d"
+            return await original(command)
+
+        monkeypatch.setattr(mock_mc, "_run_command_blocking", responses)
+        result = await execute_action(mock_mc, ActionType.CHECK_HEALTH, {})
+
+        assert result.success is True
+        assert result.data["health_raw"] == "Health: 0.0d"
+        assert result.data.get("health_source") is None
+        assert "0.0" in result.message
+
+    async def test_check_health_keeps_maximum_separate(self, mock_mc, monkeypatch):
+        original = mock_mc._run_command_blocking
+
+        async def responses(command: str) -> str:
+            if command.startswith("data get entity AIBot Health"):
+                return "No entity was found"
+            if command.startswith("attribute AIBot minecraft:generic.max_health"):
+                return "Base value: 40.0"
+            return await original(command)
+
+        monkeypatch.setattr(mock_mc, "_run_command_blocking", responses)
+        result = await execute_action(mock_mc, ActionType.CHECK_HEALTH, {})
+
+        assert result.success is True
+        assert result.data["health_raw"] == ""
+        assert result.data["max_health_raw"] == "Base value: 40.0"
+        assert result.data["health_source"] == "attribute_max"
     async def test_check_hunger(self, mock_mc):
         """Hunger action should always succeed and report a /20 value."""
         result = await execute_action(mock_mc, ActionType.CHECK_HUNGER, {})
