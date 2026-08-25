@@ -292,9 +292,10 @@ class McpqClient:
 
         Paper 1.21.4 removed the ``/locatebiome`` command (it's now
         ``/locate biome <type>`` and requires a biome argument), so probe a
-        bounded list of common biomes with ``/execute if biome``.  Block
-        contents cannot identify a biome reliably and are intentionally not
-        used as a fallback.
+        bounded list of common biomes with ``/execute if biome``.  Each probe
+        executes as the configured player so the coordinates are evaluated in
+        that player's dimension.  Block contents cannot identify a biome
+        reliably and are intentionally not used as a fallback.
 
         Returns the biome name (e.g. ``"plains"``) or ``"unknown"``.
         """
@@ -313,7 +314,8 @@ class McpqClient:
         for biome in common_biomes:
             try:
                 check_cmd = (
-                    f"execute if biome {x} {y} {z} minecraft:{biome} run say __biome_{biome}__"
+                    f"execute as {self._player_name} at @s if biome "
+                    f"{x} {y} {z} minecraft:{biome} run say __biome_{biome}__"
                 )
                 resp = await self.run_command_blocking(check_cmd)
                 if f"__biome_{biome}__" in resp:

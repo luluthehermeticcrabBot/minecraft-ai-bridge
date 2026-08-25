@@ -162,15 +162,16 @@ class TestObserver:
 
         class FakeClient(McpqClient):
             def __init__(self) -> None:
+                super().__init__(player_name="NetherBot")
                 self.probes: list[str] = []
 
             async def get_block(self, x: int, y: int, z: int) -> str:
-                return "grass_block"
+                raise AssertionError("biome detection must not inspect blocks")
 
             async def run_command_blocking(self, command: str) -> str:
                 self.probes.append(command)
                 if command == (
-                    "execute if biome 0 65 0 minecraft:forest "
+                    "execute as NetherBot at @s if biome 0 65 0 minecraft:forest "
                     "run say __biome_forest__"
                 ):
                     return "[Server] __biome_forest__"
@@ -180,9 +181,12 @@ class TestObserver:
 
         assert await client.get_biome(0, 65, 0) == "forest"
         assert client.probes == [
-            "execute if biome 0 65 0 minecraft:plains run say __biome_plains__",
-            "execute if biome 0 65 0 minecraft:desert run say __biome_desert__",
-            "execute if biome 0 65 0 minecraft:forest run say __biome_forest__",
+            "execute as NetherBot at @s if biome 0 65 0 minecraft:plains "
+            "run say __biome_plains__",
+            "execute as NetherBot at @s if biome 0 65 0 minecraft:desert "
+            "run say __biome_desert__",
+            "execute as NetherBot at @s if biome 0 65 0 minecraft:forest "
+            "run say __biome_forest__",
         ]
 
 
