@@ -160,6 +160,10 @@ section. This is enforced by the AGENTS.md "CHANGELOG.md" rule.
   on a cactus — fixing this required a damage-source check
   (`LastHurtByEntity`) and a flee path for high-threat scenarios.
 
+### Removed
+
+- Removed the unreachable standalone `blacklisted` field from `scan_entities`; blacklist safety remains represented by each detected entity's `detailed[].should_attack` value.
+
 ---
 
 ## [0.5.1] — 2026-07-11
