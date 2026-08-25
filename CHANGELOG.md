@@ -154,8 +154,9 @@ section. This is enforced by the AGENTS.md "CHANGELOG.md" rule.
   preserves valid partial compounds, rejects invalid health values without
   guessing, and reports custom max-health output separately.
 - Biome detection now uses authoritative `/execute if biome` probes only,
-  executes them in the configured player's dimension, and caches successful
-  and `"unknown"` results per chunk to avoid repeated bounded probe sequences.
+  executes them in the configured player's dimension, covers common
+  Overworld, Nether, and End biomes, and caches successful and `"unknown"`
+  results per chunk to avoid repeated bounded probe sequences.
 
 ### Fixed
 

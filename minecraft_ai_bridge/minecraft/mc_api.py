@@ -310,6 +310,16 @@ class McpqClient:
             "river",
             "swamp",
             "jungle",
+            "nether_wastes",
+            "soul_sand_valley",
+            "crimson_forest",
+            "warped_forest",
+            "basalt_deltas",
+            "the_end",
+            "end_highlands",
+            "end_midlands",
+            "small_end_islands",
+            "end_barrens",
         ]
         for biome in common_biomes:
             try:
