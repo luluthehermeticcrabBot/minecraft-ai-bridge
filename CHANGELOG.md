@@ -153,7 +153,7 @@ section. This is enforced by the AGENTS.md "CHANGELOG.md" rule.
 
 ### Fixed
 
-- Survival preservation now scans critical threats and protected entities represented by its threat/blacklist policy, and auto-consume, auto-heal, and day/night awareness operate independently of the legacy reflex flags. Tick 24000 is correctly treated as daytime.
+- Survival preservation now scans curated hostile mobs plus critical threats, and auto-consume, auto-heal, and day/night awareness operate independently of the legacy reflex flags. Tick 24000 is correctly treated as daytime.
 - PR #7 (initial) had a reflex attack that fired on **any** health
   drop, including fall damage, cactus damage, and lava damage.
   This caused the agent to charge a nearby mob because it tripped

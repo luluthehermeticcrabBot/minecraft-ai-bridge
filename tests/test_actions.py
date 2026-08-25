@@ -418,23 +418,24 @@ class TestCombat:
         assert "enderman" not in detected  # not configured
         assert "zombie" in result.message.lower()
 
-    async def test_scan_entities_includes_critical_and_blacklisted_types(self, mock_mc):
-        """Policy-covered critical and protected entities are discoverable."""
-        mock_mc.set_hostile_mobs(["warden", "iron_golem", "villager"])
+    async def test_scan_entities_includes_critical_types_with_bounded_scan(self, mock_mc):
+        """Critical threats remain discoverable without unbounded selector growth."""
+        from minecraft_ai_bridge.minecraft.actions import _SCAN_ENTITY_TYPES
+
+        mock_mc.set_hostile_mobs(["warden"])
         result = await execute_action(mock_mc, ActionType.SCAN_ENTITIES, {"radius": 5})
 
         assert result.success is True
-        assert set(result.data["mobs_nearby"]) >= {"warden", "iron_golem", "villager"}
+        assert result.data["mobs_nearby"] == ["warden"]
         detailed = {mob["type"]: mob for mob in result.data["detailed"]}
         assert detailed["warden"] == {
             "type": "warden",
             "threat": "critical",
             "should_attack": False,
         }
-        assert detailed["iron_golem"]["should_attack"] is False
-        assert detailed["villager"]["should_attack"] is False
-        assert "warden" in result.data["too_dangerous"]
-        assert {"iron_golem", "villager"} <= set(result.data["blacklisted"])
+        assert result.data["too_dangerous"] == ["warden"]
+        assert len(_SCAN_ENTITY_TYPES) <= 30
+        assert {"warden", "wither"} <= set(_SCAN_ENTITY_TYPES)
 
     async def test_scan_entities_continues_after_selector_failure(self, mock_mc, monkeypatch):
         """A failed selector does not prevent later entity types from scanning."""

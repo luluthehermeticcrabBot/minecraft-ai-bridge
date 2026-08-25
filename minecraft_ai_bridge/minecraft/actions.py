@@ -1335,11 +1335,11 @@ _MOB_BLACKLIST: frozenset[str] = frozenset(
 )
 
 
-# Stable scan order: retain the existing hostile order, then add threat-table
-# and blacklist entries that are not already present.  The blacklist is sorted
-# because frozenset iteration order is not stable across processes.
+# Keep the scan bounded: one selector per curated hostile type plus the two
+# critical threats that are intentionally excluded from the hostile list.
+# Threat and blacklist helpers still classify any type that is detected.
 _SCAN_ENTITY_TYPES: tuple[str, ...] = tuple(
-    dict.fromkeys((*_HOSTILE_MOBS, *_MOB_THREAT_LEVELS, *sorted(_MOB_BLACKLIST)))
+    dict.fromkeys((*_HOSTILE_MOBS, "warden", "wither"))
 )
 
 
@@ -1392,13 +1392,11 @@ async def _scan_entities(mc: McpqClient, params: dict) -> ActionResult:
         for each detected mob.  ``threat`` is one of ``low``,
         ``medium``, ``high``, ``critical`` (or ``neutral`` for
         unknown mobs).  ``should_attack`` is False for blacklisted
-        mobs (iron golem, villagers, tamed animals) and critical
-        mobs (warden, wither) — the agent should never engage them.
-      - ``blacklisted``: list of mob types in range that are in
-        the blacklist (iron golem, villager, tamed wolf, etc.).
-        The agent must not attack these under any circumstances —
-        doing so would either turn the entire village hostile or
-        just be wrong.
+        scanned types and critical mobs (warden, wither) — the agent
+        should never engage them.
+      - ``blacklisted``: list of detected scanned types that are in
+        the blacklist.  The blacklist policy is applied whenever a
+        blacklisted type is included in the scan set.
       - ``too_dangerous``: list of mob types in range that are too
         dangerous to engage (warden, wither).  Even though the
         ``should_attack`` flag is False, the agent needs to know
