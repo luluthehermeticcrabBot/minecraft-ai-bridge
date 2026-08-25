@@ -1394,9 +1394,6 @@ async def _scan_entities(mc: McpqClient, params: dict) -> ActionResult:
         unknown mobs).  ``should_attack`` is False for blacklisted
         scanned types and critical mobs (warden, wither) — the agent
         should never engage them.
-      - ``blacklisted``: list of detected scanned types that are in
-        the blacklist.  The blacklist policy is applied whenever a
-        blacklisted type is included in the scan set.
       - ``too_dangerous``: list of mob types in range that are too
         dangerous to engage (warden, wither).  Even though the
         ``should_attack`` flag is False, the agent needs to know
@@ -1414,8 +1411,6 @@ async def _scan_entities(mc: McpqClient, params: dict) -> ActionResult:
     # Backward compatible: existing code reads `mobs_nearby` (a list
     # of strings).  New code can read `detailed` for the richer view.
     detailed: list[dict[str, str | bool]] = []
-    # Mob types that are in range but should NOT be attacked (blacklist).
-    blacklisted: list[str] = []
     # Mob types that are too dangerous to engage (e.g. warden).
     too_dangerous: list[str] = []
 
@@ -1442,12 +1437,9 @@ async def _scan_entities(mc: McpqClient, params: dict) -> ActionResult:
                     "should_attack": should_attack,
                 }
             )
-            if not should_attack:
-                if _is_blacklisted(mob):
-                    blacklisted.append(mob)
-                else:
-                    too_dangerous.append(mob)
 
+            if not should_attack and not _is_blacklisted(mob):
+                too_dangerous.append(mob)
     msg = (
         f"No hostile mobs within {radius} blocks"
         if not detected
@@ -1462,7 +1454,6 @@ async def _scan_entities(mc: McpqClient, params: dict) -> ActionResult:
             "mobs": presence,
             "mobs_nearby": detected,
             "detailed": detailed,
-            "blacklisted": blacklisted,
             "too_dangerous": too_dangerous,
         },
     )

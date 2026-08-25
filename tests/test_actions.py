@@ -756,7 +756,7 @@ class TestScanEntitiesDetailed:
         result = await execute_action(mock_mc, ActionType.SCAN_ENTITIES, {"radius": 5})
         assert result.data["detailed"] == []
         assert result.data["mobs_nearby"] == []
-        assert result.data["blacklisted"] == []
+        assert "blacklisted" not in result.data
         assert result.data["too_dangerous"] == []
 
     async def test_scan_entities_picks_highest_threat(self, mock_mc):
