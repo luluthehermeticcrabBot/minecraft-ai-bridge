@@ -24,7 +24,7 @@ These failures can give the LLM confidently incorrect world state or create avoi
    - numeric suffixes (`b`, `s`, `l`, `f`, `d`);
    - optional `Damage`/`damage` values;
    - partial validity without discarding valid neighboring entries.
-3. Parse health from the named `Health` field, accept numeric suffixes, and reject invalid or out-of-range values.
+3. Parse health from the named `Health` field, accept numeric suffixes, and reject invalid, negative, or non-finite values without imposing the default 20-health ceiling.
 4. Treat biome names as authoritative only when an `/execute if biome` probe succeeds.
 5. Bound biome probing operationally:
    - probe only a curated list of common biomes;
@@ -60,7 +60,7 @@ The existing JSON-like fallback remains available for test/simulator data, but i
 
 ### Health parsing
 
-Add a field-aware parser for health output. It must match the `Health` label when present, rather than selecting the first numeric token in arbitrary command output. The observer accepts finite numeric values in the Minecraft player range `0.0..20.0`; malformed, missing, or out-of-range values remain `None`.
+Add a field-aware parser for health output. It must match the `Health` label when present, rather than selecting the first numeric token in arbitrary command output. The observer accepts finite, nonnegative numeric values, preserving values above 20 for servers or effects that modify `generic.max_health`; malformed, negative, or non-finite values remain `None`.
 
 Existing generic `_parse_nbt_value` behavior remains compatible for position/time and direct parser tests unless a call site needs the stricter named-field behavior.
 
