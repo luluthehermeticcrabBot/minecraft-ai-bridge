@@ -44,6 +44,20 @@ class TestShortTermMemory:
         msgs = mem.recent_messages()
         assert len(msgs) == 3
 
+    def test_bounded_recent_messages_keeps_newest_entries_and_budget(self):
+        memory = AgentMemory(window=20)
+        for index in range(8):
+            memory.record_action(
+                f"action_{index}",
+                {"success": True, "message": "x" * 80},
+            )
+
+        messages = memory.bounded_recent_messages(max_entries=3, max_chars=220)
+
+        assert len(messages) <= 3
+        assert sum(len(message.content) for message in messages) <= 220
+        assert "action_7" in messages[-1].content
+
     def test_short_term_summary(self):
         mem = AgentMemory(window=5)
         mem.record_action("scan", {"success": True, "message": "Scanned"})
@@ -93,6 +107,17 @@ class TestLongTermMemory:
         mem.remember_fact("X marks the spot")
         mem.remember_fact("X marks the spot")
         assert len(mem._long_term) == 1
+
+    def test_bounded_notable_facts_keeps_newest_facts_with_header(self):
+        memory = AgentMemory()
+        for index in range(5):
+            memory.remember_fact(f"fact-{index}-" + "x" * 30)
+
+        facts = memory.bounded_notable_facts(max_chars=100)
+
+        assert facts.startswith("Notable facts:\n")
+        assert "fact-4" in facts
+        assert len(facts) <= 100
 
     def test_empty_facts(self):
         mem = AgentMemory()
