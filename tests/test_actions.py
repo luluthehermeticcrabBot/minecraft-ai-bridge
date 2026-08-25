@@ -418,6 +418,42 @@ class TestCombat:
         assert "enderman" not in detected  # not configured
         assert "zombie" in result.message.lower()
 
+    async def test_scan_entities_includes_critical_types_with_bounded_scan(self, mock_mc):
+        """Critical threats remain discoverable without unbounded selector growth."""
+        from minecraft_ai_bridge.minecraft.actions import _SCAN_ENTITY_TYPES
+
+        mock_mc.set_hostile_mobs(["warden"])
+        result = await execute_action(mock_mc, ActionType.SCAN_ENTITIES, {"radius": 5})
+
+        assert result.success is True
+        assert result.data["mobs_nearby"] == ["warden"]
+        detailed = {mob["type"]: mob for mob in result.data["detailed"]}
+        assert detailed["warden"] == {
+            "type": "warden",
+            "threat": "critical",
+            "should_attack": False,
+        }
+        assert result.data["too_dangerous"] == ["warden"]
+        assert len(_SCAN_ENTITY_TYPES) <= 30
+        assert {"warden", "wither"} <= set(_SCAN_ENTITY_TYPES)
+
+    async def test_scan_entities_continues_after_selector_failure(self, mock_mc, monkeypatch):
+        """A failed selector does not prevent later entity types from scanning."""
+        original = mock_mc._run_command_blocking
+
+        async def fail_creeper(command: str) -> str:
+            if "type=minecraft:creeper" in command:
+                raise RuntimeError("selector failed")
+            return await original(command)
+
+        monkeypatch.setattr(mock_mc, "_run_command_blocking", fail_creeper)
+        mock_mc.set_hostile_mobs(["creeper", "warden"])
+        result = await execute_action(mock_mc, ActionType.SCAN_ENTITIES, {"radius": 5})
+
+        assert result.success is True
+        assert "creeper" not in result.data["mobs_nearby"]
+        assert "warden" in result.data["mobs_nearby"]
+
     async def test_scan_entities_custom_radius(self, mock_mc):
         """Custom radius is reflected in the response."""
         result = await execute_action(mock_mc, ActionType.SCAN_ENTITIES, {"radius": 8})
@@ -720,7 +756,7 @@ class TestScanEntitiesDetailed:
         result = await execute_action(mock_mc, ActionType.SCAN_ENTITIES, {"radius": 5})
         assert result.data["detailed"] == []
         assert result.data["mobs_nearby"] == []
-        assert result.data["blacklisted"] == []
+        assert "blacklisted" not in result.data
         assert result.data["too_dangerous"] == []
 
     async def test_scan_entities_picks_highest_threat(self, mock_mc):
