@@ -376,17 +376,18 @@ minecraft-ai-bridge/
 - **Structure preservation**: The agent does not yet detect or respect existing player-built structures. Buildings, railroads, and NPC villages may be modified. This is a planned feature.
 - **Inventory**: Raw NBT is shown to the LLM as the primary view. The structured `InventoryManager` is available for programmatic access but the LLM prompt currently includes both structured and raw formats.
 - **Biomes**: The agent has no biome awareness — it cannot tell a forest from a desert.
-- **Combat**: Basic `/damage`-based attack only. Mob-specific strategies, armor, and weapons are not implemented.
+- **Combat**: Basic `/damage`-based attack and hotbar weapon selection are implemented. Mob-specific strategies and armor management are not implemented.
 
 ## CI/CD
 
-The project uses **GitHub Actions** for continuous integration. Every push and pull request to `master`/`main` triggers:
+The project uses **GitHub Actions** for continuous integration. Every push and pull request to `master`/`main` runs deterministic checks:
 
 | Job | What it checks |
 |-----|---------------|
 | **lint** | `ruff check` (code quality), `ruff format --check` (formatting), `mypy` (type hints) |
-| **test** | Full `pytest` suite with `--timeout=30` |
+| **test** | Deterministic pytest suite across Python 3.11, 3.12, and 3.13 |
 | **style** | `ruff check --select I` (import sorting) |
+| **integration** | Opt-in provider-backed tests; requires `RUN_LIVE_INTEGRATION=true`, Paper/MCPQ, bot plugin, and `OPENROUTER_API_KEY` |
 
 The CI badge at the top of this README shows the current status of the `master` branch.
 
@@ -400,12 +401,12 @@ pip install -e "."
 
 ## Testing
 
-The project has **182 tests** organized in two tiers:
+The project has **332 deterministic tests** plus provider-backed integration tests organized in two tiers:
 
 | Tier | Count | Description | Dependencies |
 |------|-------|-------------|--------------|
-| **Unit** | 160 | Action handlers, NBT parsing, memory, goal fallbacks, config, chat commands, inventory manager | `MockMcpqClient` (in-memory mock, no server needed) |
-| **Integration** | 22 | Full think-act-observe loop, real MCPQ + real LLM | Paper 26.1.2 + MCPQ v2.2 + OpenRouter API key |
+| **Deterministic** | 332 | Action handlers, NBT parsing, memory, goal fallbacks, config, chat commands, inventory manager, and orchestrator behavior | `MockMcpqClient` / `MockLLMClient` |
+| **Integration** | Provider-backed | Full think-act-observe loop and real MCPQ + real LLM | Paper 26.1.2 + MCPQ v2.2 + bot plugin + OpenRouter API key |
 
 ### Test Infrastructure
 

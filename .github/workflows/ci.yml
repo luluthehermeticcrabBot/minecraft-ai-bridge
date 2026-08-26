@@ -79,45 +79,38 @@ jobs:
         run: pytest tests/ -k "not integration" -v --tb=short --timeout=30
 
   integration:
-    name: Integration Tests
+    name: Integration Tests (opt-in)
     runs-on: ubuntu-latest
-    # GitHub Actions does not allow the secrets context in a job-level if.
-    # Expose the secret through the job environment and gate each step.
+    # Live integration tests require a Paper/MCPQ server and bot plugin.
+    # Set RUN_LIVE_INTEGRATION=true only when this runner has that environment.
+    if: ${{ vars.RUN_LIVE_INTEGRATION == 'true' }}
     env:
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
     steps:
-      - name: Check integration secret
-        id: integration_secret
+      - name: Check integration prerequisites
         shell: bash
         run: |
-          if [[ -n "$OPENROUTER_API_KEY" ]]; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Integration tests skipped: OPENROUTER_API_KEY is not configured"
+          if [[ -z "$OPENROUTER_API_KEY" ]]; then
+            echo "::error::OPENROUTER_API_KEY is required when RUN_LIVE_INTEGRATION=true"
+            exit 1
           fi
 
       - uses: actions/checkout@v4
-        if: ${{ steps.integration_secret.outputs.available == 'true' }}
 
       - name: Set up Python ${{ env.PYTHON_VERSION }}
-        if: ${{ steps.integration_secret.outputs.available == 'true' }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Install system dependencies
-        if: ${{ steps.integration_secret.outputs.available == 'true' }}
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libgrpc-dev
 
       - name: Install Python dependencies
-        if: ${{ steps.integration_secret.outputs.available == 'true' }}
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
       - name: Run integration tests
-        if: ${{ steps.integration_secret.outputs.available == 'true' }}
         run: pytest tests/test_integration.py -v --tb=short --timeout=120

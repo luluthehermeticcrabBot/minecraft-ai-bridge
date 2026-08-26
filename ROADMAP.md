@@ -70,14 +70,15 @@ This document outlines the development priorities, completed work, and future pl
 ### P1: Release Readiness (Current)
 
 #### CI/CD Setup
-- [ ] **Set up GitHub Actions secrets** for integration tests
+- [x] **Set up GitHub Actions secrets** for integration tests
   - `OPENROUTER_API_KEY` for LLM inference tests
   - Consider `MISTRAL_API_KEY` as alternative
 - [x] Run deterministic unit tests on all pushes and pull requests
-- [x] Gate integration tests on the configured provider secret
+- [x] Gate live integration tests on `RUN_LIVE_INTEGRATION=true` plus the provider secret
 - [x] Run Ruff linting and formatting checks
+- [ ] Provision Paper/MCPQ/bot-plugin infrastructure for live CI integration tests
 - [ ] Re-enable mypy after reconciling strict SDK types
-- [ ] **Add test matrix** for Python versions (3.11, 3.12, 3.13)
+- [x] **Test matrix** for Python versions (3.11, 3.12, 3.13)
 
 #### Code Improvements
 - [x] Fix auto-step logic to not step over hazards
