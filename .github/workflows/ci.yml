@@ -64,7 +64,8 @@ jobs:
           java-version: "25"
 
       - name: Build bot plugin against latest Paper
-        run: ./bot-plugin/gradlew --no-daemon clean build
+        working-directory: bot-plugin
+        run: ./gradlew --no-daemon clean build
 
   test:
     name: Unit Tests (Python ${{ matrix.python-version }})
