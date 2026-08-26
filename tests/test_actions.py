@@ -545,6 +545,7 @@ class TestInformation:
         assert result.data["health_raw"] == ""
         assert result.data["max_health_raw"] == "Base value: 40.0"
         assert result.data["health_source"] == "attribute_max"
+
     async def test_check_hunger(self, mock_mc):
         """Hunger action should always succeed and report a /20 value."""
         result = await execute_action(mock_mc, ActionType.CHECK_HUNGER, {})

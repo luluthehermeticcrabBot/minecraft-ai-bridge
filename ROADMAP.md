@@ -1,7 +1,7 @@
 # Project Roadmap
 
 > **Minecraft AI Bridge** - Development Roadmap and Priority Tracking
-> Last Updated: 2026-07-11
+> Last Updated: 2026-08-26
 
 This document outlines the development priorities, completed work, and future plans for the Minecraft AI Bridge project.
 
@@ -9,9 +9,9 @@ This document outlines the development priorities, completed work, and future pl
 
 ## 🎯 Current Status
 
-**Version**: 0.5.0
-**Test Coverage**: 190 unit tests (all passing) + 22 integration tests
-**Overall Health**: ✅ Production-Ready with minor improvements needed
+**Version**: 0.5.1 (unreleased)
+**Test Coverage**: 319 deterministic tests passing; integration tests require Paper/MCPQ and an LLM provider
+**Overall Health**: ✅ Core behavior stable; CI and release hardening in progress
 
 ---
 
@@ -53,36 +53,37 @@ This document outlines the development priorities, completed work, and future pl
 - [x] I28: Structure respect rules (prompt guidance to not build over existing builds)
 
 ### Testing
-- [x] 190 unit tests (MockMcpqClient-based, no server needed)
-- [x] 22 integration tests (real MCPQ + real LLM)
-- [x] All unit tests passing in sandbox environment
+- [x] 319 deterministic tests passing (MockMcpqClient-based, no server needed)
+- [ ] Integration tests require Paper/MCPQ and an LLM provider
 - [x] Goal-verification helpers (`actions_taken()`, `position_reached()`)
+
+### P2: Observer and Prompt Reliability (Complete)
+- [x] Observer hardening: robust inventory SNBT, health parsing, and authoritative dimension-aware biome detection
+- [x] Bounded prompt context and notable facts
+- [x] Explicit failure-recovery hints with one guarded next-turn retry
+- [x] Identical retry rejection without repeating side effects
 
 ---
 
 ## 🚀 Upcoming Priorities
 
-### P1: High Priority (Next 1-2 Weeks)
+### P1: Release Readiness (Current)
 
 #### CI/CD Setup
 - [ ] **Set up GitHub Actions secrets** for integration tests
   - `OPENROUTER_API_KEY` for LLM inference tests
   - Consider `MISTRAL_API_KEY` as alternative
-- [ ] **Optimize CI workflow**
-  - Run unit tests on all pushes/PRs (no secrets needed)
-  - Run integration tests only on main branch or with secrets
-  - Add linting (ruff) and type checking (mypy)
+- [x] Run deterministic unit tests on all pushes and pull requests
+- [x] Gate integration tests on the configured provider secret
+- [x] Run Ruff linting and formatting checks
+- [ ] Re-enable mypy after reconciling strict SDK types
 - [ ] **Add test matrix** for Python versions (3.11, 3.12, 3.13)
 
 #### Code Improvements
-- [ ] **Fix auto-step logic** to not step over hazards (completed in this session)
-- [ ] **Update command format tests** to match current code (completed in this session)
-- [ ] **Add more fallback plans** for common goals:
-  - [ ] Nether portal construction
-  - [ ] End portal activation
-  - [ ] Redstone circuits
-  - [ ] Animal farming
-  - [ ] Villager trading
+- [x] Fix auto-step logic to not step over hazards
+- [x] Update command format tests to match current code
+- [x] Add fallback plans for Nether portal construction, End portal activation,
+  redstone circuits, animal farming, and villager trading
 
 ### P2: Medium Priority (Next Month)
 
@@ -94,11 +95,11 @@ This document outlines the development priorities, completed work, and future pl
   - Add momentum and inertia
 
 #### Survival Mode Support
-- [ ] **Health and hunger management**
+- [x] **Health and hunger management**
   - Monitor and maintain health
   - Find and consume food
   - Avoid dangerous situations
-- [ ] **Combat system**
+- [x] **Combat system**
   - Mob detection and avoidance
   - Weapon selection and usage
   - Armor management
@@ -113,13 +114,7 @@ This document outlines the development priorities, completed work, and future pl
 - [ ] **Avoidance of player-built structures**
 - [ ] **Better obstacle detection**
 
-#### LLM Prompt Optimization
-- [ ] **Context window optimization**
-  - Summarize long-term facts instead of dumping raw
-  - Implement token counting and truncation
-- [ ] **Better error recovery**
-  - Add "last action failed because..." hints
-  - Retry with different params when action fails
+#### Planning System
 - [ ] **Multi-turn planning**
   - Allow LLM to plan multiple steps ahead
   - Implement plan validation
@@ -160,28 +155,35 @@ This document outlines the development priorities, completed work, and future pl
 
 ## 📋 Release Plan
 
-### v0.5.0 (Current)
+### v0.5.0
 - All critical bugs fixed
-- 190 unit tests passing
 - Phase 4 features complete (chat commands, inventory manager, persistent memory)
+
+### v0.5.1 (Current, unreleased)
+**Focus**: Observer hardening and prompt recovery
+
+- [x] Robust inventory, health, and biome observation
+- [x] Bounded prompt context and notable facts
+- [x] Failure hints and one guarded next-turn retry
 
 ### v0.6.0 (Next Minor Release)
 **Target**: 2-4 weeks
-**Focus**: CI/CD setup, WASD movement, survival mode basics
+**Focus**: CI/CD matrix and remaining survival basics
 
-- [ ] GitHub Actions CI with unit tests
-- [ ] WASD-style movement (Phase 4)
-- [ ] Health and hunger management
-- [ ] Basic combat system
-- [ ] More fallback plans
+- [x] GitHub Actions CI with deterministic unit tests
+- [ ] Configure `OPENROUTER_API_KEY` repository secret for integration tests
+- [ ] Add Python 3.11, 3.12, and 3.13 test matrix
+- [x] Health and hunger management
+- [x] Basic combat system
+- [ ] Proper crafting and smelting
 
 ### v0.7.0
 **Target**: 1-2 months
-**Focus**: Pathfinding improvements, LLM prompt optimization
+**Focus**: Movement, pathfinding, and planning improvements
 
+- [ ] WASD-style movement
 - [ ] 3D pathfinding
 - [ ] Jump/parkour capabilities
-- [ ] Context window optimization
 - [ ] Multi-turn planning
 - [ ] PyPI publishing
 
@@ -199,24 +201,22 @@ This document outlines the development priorities, completed work, and future pl
 
 ## 🧪 Testing Strategy
 
-### Unit Tests (190 tests)
+### Unit Tests (319 deterministic tests)
 - **Run in CI**: ✅ Yes (on all pushes/PRs)
 - **Dependencies**: None (MockMcpqClient)
-- **Duration**: < 2 seconds
-- **Coverage**: All action handlers, NBT parsing, memory, goals, config, inventory, chat commands, pathfinding
+- **Coverage**: Action handlers, NBT parsing, memory, goals, config, inventory, chat commands, pathfinding, and orchestrator recovery
 
-### Integration Tests (22 tests)
-- **Run in CI**: ⚠️ Only with secrets (OPENROUTER_API_KEY)
-- **Dependencies**: Paper server + MCPQ plugin + LLM API key
-- **Duration**: ~1-2 minutes
-- **Coverage**: Full think-act-observe loop, real LLM inference
+### Integration Tests
+- **Run in CI**: ⚠️ Only with `OPENROUTER_API_KEY`
+- **Dependencies**: Paper server + MCPQ plugin + LLM provider
+- **Coverage**: Full think-act-observe loop and provider-backed inference
 
 ### Manual Testing
 - **Local Docker setup**: Required for full end-to-end testing
 - **LLM providers**: Test with OpenAI, Anthropic, Ollama, OpenRouter, OpenCode Server
 - **Minecraft versions**: Test with Paper 26.1.2
-
 ---
+
 
 ## 🔧 Development Workflow
 

@@ -64,6 +64,7 @@ class Observer:
     def __init__(self, mc: McpqClient) -> None:
         self._mc = mc
         self._biome_cache: dict[tuple[int, int], str] = {}
+
     async def observe(self) -> WorldState:
         """Gather a full state snapshot.  Returns a ``WorldState``."""
         state = WorldState()
@@ -150,9 +151,7 @@ class Observer:
 
 _NBT_LIST_RE = re.compile(r"\[([^\]]+)\]")
 _NBT_VALUE_RE = re.compile(r"(-?\d+(?:\.\d*)?(?:[eE][+-]?\d*)?)[dfbsIL]?")
-_NBT_NUMBER_RE = re.compile(
-    r"^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?[bBsSlLfFdD]?$"
-)
+_NBT_NUMBER_RE = re.compile(r"^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?[bBsSlLfFdD]?$")
 
 
 def _parse_nbt_value(raw: str) -> Any:
