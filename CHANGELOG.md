@@ -170,6 +170,7 @@ section. This is enforced by the AGENTS.md "CHANGELOG.md" rule.
   This caused the agent to charge a nearby mob because it tripped
   on a cactus — fixing this required a damage-source check
   (`LastHurtByEntity`) and a flee path for high-threat scenarios.
+- Reflex safety actions now bypass LLM deliberation entirely, avoiding an unused decision before executing the preemptive action.
 
 ### Removed
 

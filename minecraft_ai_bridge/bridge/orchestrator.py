@@ -215,82 +215,86 @@ class Orchestrator:
             reflex_result = await self._preservation.evaluate(world)
 
         retry_was_pending = self._retry_pending
-        # ── Build context for LLM ─────────────────────────────────
-        context = self._build_context(world)
-        if self._verbose:
-            self._log_context(context)
-
-        # ── Think (LLM decides) ───────────────────────────────────
-        # Build message list: goal + state + bounded memory context.
-        messages: list[Message] = [
-            Message(role=Role.USER, content=context.goal),
-            Message(role=Role.USER, content=context.state),
-        ]
-
-        if context.notable_facts:
-            messages.append(Message(role=Role.USER, content=context.notable_facts))
-        messages.extend(self._memory.bounded_recent_messages())
-
-        # Include the last action result explicitly so the LLM can see
-        # what happened (especially failures).
-        if context.last_action_result:
-            messages.append(
-                Message(
-                    role=Role.USER, content=f"=== Last Action ===\n{context.last_action_result}"
-                )
-            )
-        if context.retry_hint:
-            messages.append(Message(role=Role.USER, content=context.retry_hint))
-
-        response = await self._llm.decide(
-            system_prompt=SYSTEM_PROMPT,
-            messages=messages,
-        )
-
-        if self._verbose:
-            logger.info(
-                "LLM decision: %s → %s", response.action, json.dumps(response.action_params)
-            )
-
-        # ── Act ───────────────────────────────────────────────────
-        # A retry is evaluated on the following turn, but this block
-        # still executes at most one action per turn.
         if reflex_result is not None:
+            # Reflex actions preempt deliberation; do not consume an LLM
+            # decision when the safety layer already chose this turn's action.
             result = reflex_result
             response_action = result.action.value
             self._clear_retry()
-        elif retry_was_pending and (
-            response.action == self._retry_action
-            and response.action_params == self._retry_params
-        ):
-            result = ActionResult(
-                success=False,
-                action=self._response_action_type(response.action),
-                message=(
-                    "Retry rejected: identical action and parameters would "
-                    "repeat a side effect."
-                ),
-                data={"retry_rejected": "identical_action"},
-            )
-            self._last_result = result
-            response_action = response.action
-            self._clear_retry()
         else:
-            result = await self._act(response)
-            response_action = response.action
-            self._clear_retry()
-            if (
-                not result.success
-                and not retry_was_pending
-                and response.action not in {"wait", "done"}
-            ):
-                self._retry_pending = True
-                self._retry_action = response.action
-                self._retry_params = dict(response.action_params)
-                self._retry_hint = format_failure_hint(
-                    response.action,
-                    result.message,
+            # ── Build context for LLM ─────────────────────────────────
+            context = self._build_context(world)
+            if self._verbose:
+                self._log_context(context)
+
+            # ── Think (LLM decides) ───────────────────────────────────
+            # Build message list: goal + state + bounded memory context.
+            messages: list[Message] = [
+                Message(role=Role.USER, content=context.goal),
+                Message(role=Role.USER, content=context.state),
+            ]
+
+            if context.notable_facts:
+                messages.append(Message(role=Role.USER, content=context.notable_facts))
+            messages.extend(self._memory.bounded_recent_messages())
+
+            # Include the last action result explicitly so the LLM can see
+            # what happened (especially failures).
+            if context.last_action_result:
+                messages.append(
+                    Message(
+                        role=Role.USER,
+                        content=f"=== Last Action ===\n{context.last_action_result}",
+                    )
                 )
+            if context.retry_hint:
+                messages.append(Message(role=Role.USER, content=context.retry_hint))
+
+            response = await self._llm.decide(
+                system_prompt=SYSTEM_PROMPT,
+                messages=messages,
+            )
+
+            if self._verbose:
+                logger.info(
+                    "LLM decision: %s → %s", response.action, json.dumps(response.action_params)
+                )
+
+            # ── Act ───────────────────────────────────────────────────
+            # A retry is evaluated on the following turn, but this block
+            # still executes at most one action per turn.
+            if retry_was_pending and (
+                response.action == self._retry_action
+                and response.action_params == self._retry_params
+            ):
+                result = ActionResult(
+                    success=False,
+                    action=self._response_action_type(response.action),
+                    message=(
+                        "Retry rejected: identical action and parameters would "
+                        "repeat a side effect."
+                    ),
+                    data={"retry_rejected": "identical_action"},
+                )
+                self._last_result = result
+                response_action = response.action
+                self._clear_retry()
+            else:
+                result = await self._act(response)
+                response_action = response.action
+                self._clear_retry()
+                if (
+                    not result.success
+                    and not retry_was_pending
+                    and response.action not in {"wait", "done"}
+                ):
+                    self._retry_pending = True
+                    self._retry_action = response.action
+                    self._retry_params = dict(response.action_params)
+                    self._retry_hint = format_failure_hint(
+                        response.action,
+                        result.message,
+                    )
 
         # Track consecutive failures — count both action failures and exceptions
         if result.success:
