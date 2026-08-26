@@ -181,12 +181,9 @@ class TestObserver:
 
         assert await client.get_biome(0, 65, 0) == "forest"
         assert client.probes == [
-            "execute as NetherBot at @s if biome 0 65 0 minecraft:plains "
-            "run say __biome_plains__",
-            "execute as NetherBot at @s if biome 0 65 0 minecraft:desert "
-            "run say __biome_desert__",
-            "execute as NetherBot at @s if biome 0 65 0 minecraft:forest "
-            "run say __biome_forest__",
+            "execute as NetherBot at @s if biome 0 65 0 minecraft:plains run say __biome_plains__",
+            "execute as NetherBot at @s if biome 0 65 0 minecraft:desert run say __biome_desert__",
+            "execute as NetherBot at @s if biome 0 65 0 minecraft:forest run say __biome_forest__",
         ]
 
 
@@ -225,6 +222,7 @@ class TestNbtValueParser:
         assert _parse_nbt_value("Health: 20.0d") == 20.0
         assert _parse_nbt_value("Health: 0.0d") == 0.0
         assert _parse_nbt_value("15.5d") == 15.5
+
     def test_parse_health_named_field_and_custom_maximum(self):
         assert _parse_health_value("Health: 40.0d") == 40.0
         assert _parse_health_value("MaxHealth: 100.0d") is None
@@ -310,7 +308,7 @@ class TestParseInventoryNbt:
     def test_parse_partial_inventory_keeps_valid_compounds(self):
         raw = (
             '[{id:"minecraft:dirt",Count:64b,Slot:0b},'
-            '{broken},'
+            "{broken},"
             '{id:"minecraft:stone",count:32s,slot:1b}]'
         )
 
@@ -322,13 +320,8 @@ class TestParseInventoryNbt:
         ]
 
     def test_parse_signed_offhand_slot(self):
-        result = _parse_inventory_nbt(
-            '[{id:"minecraft:shield",Count:1b,Slot:-106b}]'
-        )
-        assert result == [
-            InventorySlot(item_id="minecraft:shield", count=1, slot=-106)
-        ]
-
+        result = _parse_inventory_nbt('[{id:"minecraft:shield",Count:1b,Slot:-106b}]')
+        assert result == [InventorySlot(item_id="minecraft:shield", count=1, slot=-106)]
 
     def test_parse_malformed(self):
         assert _parse_inventory_nbt("garbage") == []

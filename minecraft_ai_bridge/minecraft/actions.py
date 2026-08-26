@@ -1340,9 +1340,7 @@ _MOB_BLACKLIST: frozenset[str] = frozenset(
 # Keep the scan bounded: one selector per curated hostile type plus the two
 # critical threats that are intentionally excluded from the hostile list.
 # Threat and blacklist helpers still classify any type that is detected.
-_SCAN_ENTITY_TYPES: tuple[str, ...] = tuple(
-    dict.fromkeys((*_HOSTILE_MOBS, "warden", "wither"))
-)
+_SCAN_ENTITY_TYPES: tuple[str, ...] = tuple(dict.fromkeys((*_HOSTILE_MOBS, "warden", "wither")))
 
 
 def _get_threat_level(mob_type: str) -> str:
@@ -1666,9 +1664,7 @@ _HEALTH_RESULT_RE = re.compile(
     r"(?:[eE][+-]?\d+)?[bBsSlLfFdD]?)",
     re.IGNORECASE,
 )
-_NUMERIC_RESULT_RE = re.compile(
-    r"^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?[bBsSlLfFdD]?$"
-)
+_NUMERIC_RESULT_RE = re.compile(r"^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?[bBsSlLfFdD]?$")
 
 
 def _parse_health_response(raw: str | None) -> float | None:

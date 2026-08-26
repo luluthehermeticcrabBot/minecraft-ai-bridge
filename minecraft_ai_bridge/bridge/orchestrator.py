@@ -260,15 +260,13 @@ class Orchestrator:
             response_action = result.action.value
             self._clear_retry()
         elif retry_was_pending and (
-            response.action == self._retry_action
-            and response.action_params == self._retry_params
+            response.action == self._retry_action and response.action_params == self._retry_params
         ):
             result = ActionResult(
                 success=False,
                 action=self._response_action_type(response.action),
                 message=(
-                    "Retry rejected: identical action and parameters would "
-                    "repeat a side effect."
+                    "Retry rejected: identical action and parameters would repeat a side effect."
                 ),
                 data={"retry_rejected": "identical_action"},
             )

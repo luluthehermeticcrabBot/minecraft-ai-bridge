@@ -230,7 +230,6 @@ class AgentMemory:
         selected.reverse()
         return selected
 
-
     def notable_facts(self) -> str:
         """Format long-term memory into a string for the prompt."""
         if not self._long_term:
