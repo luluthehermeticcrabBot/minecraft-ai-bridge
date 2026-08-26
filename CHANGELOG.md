@@ -157,6 +157,10 @@ section. This is enforced by the AGENTS.md "CHANGELOG.md" rule.
   executes them in the configured player's dimension, covers common
   Overworld, Nether, and End biomes, and caches successful and `"unknown"`
   results per chunk to avoid repeated bounded probe sequences.
+- Prompt context is now bounded by recent-entry and character budgets.
+  Failed LLM-selected actions include an explicit recovery hint and receive
+  at most one guarded retry decision on the next turn; identical retries
+  are rejected without repeating side effects.
 
 ### Fixed
 
