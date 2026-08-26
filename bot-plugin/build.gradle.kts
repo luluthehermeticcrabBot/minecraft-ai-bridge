@@ -11,7 +11,7 @@ group = "io.opencode.minecraft"
 version = "1.0.0"
 
 fun resolveLatestPaperVersion(): String {
-    val connection = URI("https://fill.papermc.io/v3/projects/paper")
+    val connection = URI("https://fill.papermc.io/v3/projects/paper/versions")
         .toURL()
         .openConnection() as HttpURLConnection
     connection.connectTimeout = 10_000
@@ -20,10 +20,16 @@ fun resolveLatestPaperVersion(): String {
     connection.setRequestProperty("Accept", "application/json")
 
     return connection.inputStream.bufferedReader().use { reader ->
-        val versions = (JsonSlurper().parseText(reader.readText()) as Map<*, *>)["versions"]
-            as Map<*, *>
-        val latestReleaseGroup = versions.values.first() as List<*>
-        latestReleaseGroup.first { it is String && !it.contains('-') } as String
+        val response = JsonSlurper().parseText(reader.readText()) as Map<*, *>
+        val versions = response["versions"] as? List<*>
+            ?: error("Paper Fill API response has no versions array")
+        versions.asSequence()
+            .mapNotNull { entry ->
+                val version = (entry as? Map<*, *>)?.get("version") as? Map<*, *>
+                version?.get("id") as? String
+            }
+            .firstOrNull { !it.contains('-') }
+            ?: error("Paper Fill API response has no stable release")
     }
 }
 
