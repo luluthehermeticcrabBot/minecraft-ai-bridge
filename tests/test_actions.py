@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import pytest
+from mcpq.nbt import NbtInt
 
+import minecraft_ai_bridge.minecraft.actions as action_module
 from minecraft_ai_bridge.minecraft.actions import (
+    ActionResult,
     ActionType,
     _can_move_to,
     _cmd,
@@ -13,7 +16,9 @@ from minecraft_ai_bridge.minecraft.actions import (
     _is_hazard,
     _is_passable,
     execute_action,
+    select_best_weapon,
 )
+from minecraft_ai_bridge.minecraft.observer import InventorySlot
 
 # Only async TestActionHandlers tests are individually marked with @pytest.mark.asyncio
 
@@ -219,6 +224,166 @@ class TestInteraction:
         mock_mc._block_map = None  # type: ignore[assignment]
         result = await execute_action(mock_mc, ActionType.PLACE_BLOCK, {"x": 1, "y": 2, "z": 3})
         assert result.success is False  # handler catches TypeError and returns failure
+
+
+class TestEquipment:
+    def test_select_best_weapon_uses_hotbar_only(self):
+        items = [
+            InventorySlot(item_id="minecraft:iron_sword", count=1, slot=0),
+            InventorySlot(item_id="minecraft:diamond_sword", count=1, slot=3),
+            InventorySlot(item_id="minecraft:netherite_sword", count=1, slot=9),
+            InventorySlot(item_id="minecraft:diamond_sword", count=1, slot=100),
+        ]
+
+        selected = select_best_weapon(items)
+
+        assert selected is not None
+        assert selected.item_id == "minecraft:diamond_sword"
+        assert selected.slot == 3
+
+    def test_select_best_weapon_prefers_lower_slot_on_tie(self):
+        items = [
+            InventorySlot(item_id="minecraft:diamond_sword", count=1, slot=5),
+            InventorySlot(item_id="minecraft:diamond_axe", count=1, slot=2),
+        ]
+
+        selected = select_best_weapon(items)
+
+        assert selected is not None
+        assert selected.slot == 2
+
+    async def test_equip_best_weapon_moves_best_hotbar_item_to_main_hand(self, mock_mc):
+        mock_mc.set_inventory(
+            [
+                {"item_id": "iron_sword", "count": 1, "slot": 0},
+                {"item_id": "diamond_sword", "count": 1, "slot": 3},
+            ]
+        )
+
+        result = await execute_action(mock_mc, ActionType.EQUIP_BEST_WEAPON, {})
+
+        assert result.success is True
+        assert result.data["item_id"] == "minecraft:diamond_sword"
+        assert result.data["slot"] == 3
+        mock_mc.assert_command_contains(
+            "item replace entity AIBot weapon.mainhand from entity AIBot hotbar.3"
+        )
+
+    async def test_equip_best_weapon_respects_nonzero_selected_slot(self, mock_mc):
+        mock_mc.set_player_nbt("SelectedItemSlot", NbtInt(3))
+        mock_mc.set_inventory(
+            [
+                {"item_id": "iron_sword", "count": 1, "slot": 3},
+                {"item_id": "diamond_sword", "count": 1, "slot": 5},
+            ]
+        )
+
+        result = await execute_action(mock_mc, ActionType.EQUIP_BEST_WEAPON, {})
+
+        assert result.success is True
+        assert result.data["already_equipped"] is False
+        mock_mc.assert_command_contains(
+            "item replace entity AIBot weapon.mainhand from entity AIBot hotbar.5"
+        )
+
+    async def test_equip_best_weapon_detects_nonzero_selected_best_weapon(self, mock_mc):
+        mock_mc.set_player_nbt("SelectedItemSlot", NbtInt(3))
+        mock_mc.set_inventory(
+            [
+                {"item_id": "diamond_sword", "count": 1, "slot": 3},
+                {"item_id": "iron_sword", "count": 1, "slot": 5},
+            ]
+        )
+
+        result = await execute_action(mock_mc, ActionType.EQUIP_BEST_WEAPON, {})
+
+        assert result.success is True
+        assert result.data["already_equipped"] is True
+        assert not any("item replace" in command for command in mock_mc.commands_ran)
+
+    async def test_equip_best_weapon_avoids_redundant_main_hand_replace(self, mock_mc):
+        mock_mc.set_inventory([{"item_id": "netherite_sword", "count": 1, "slot": 0}])
+
+        result = await execute_action(mock_mc, ActionType.EQUIP_BEST_WEAPON, {})
+
+        assert result.success is True
+        assert result.data["already_equipped"] is True
+        assert not any("item replace" in command for command in mock_mc.commands_ran)
+
+    async def test_equip_best_weapon_fails_without_hotbar_weapon(self, mock_mc):
+        mock_mc.set_inventory([{"item_id": "diamond_sword", "count": 1, "slot": 9}])
+
+        result = await execute_action(mock_mc, ActionType.EQUIP_BEST_WEAPON, {})
+
+        assert result.success is False
+        assert "hotbar" in result.message.lower()
+
+    async def test_equip_best_weapon_propagates_inventory_failure(self, mock_mc, monkeypatch):
+        async def fail_inventory(mc, params):
+            return ActionResult(
+                success=False,
+                action=ActionType.CHECK_INVENTORY,
+                message="inventory unavailable",
+            )
+
+        monkeypatch.setattr(action_module, "_check_inventory", fail_inventory)
+
+        result = await execute_action(mock_mc, ActionType.EQUIP_BEST_WEAPON, {})
+
+        assert result.success is False
+        assert "inventory unavailable" in result.message
+
+    async def test_equip_best_weapon_propagates_equip_failure(self, mock_mc, monkeypatch):
+        mock_mc.set_inventory([{"item_id": "diamond_sword", "count": 1, "slot": 3}])
+
+        async def fail_equip(mc, params):
+            return ActionResult(
+                success=False,
+                action=ActionType.EQUIP_ITEM,
+                message="equip command failed",
+            )
+
+        monkeypatch.setattr(action_module, "_equip_item", fail_equip)
+
+        result = await execute_action(mock_mc, ActionType.EQUIP_BEST_WEAPON, {})
+
+        assert result.success is False
+        assert "equip command failed" in result.message
+
+    async def test_equip_best_weapon_propagates_inventory_command_failure(
+        self, mock_mc, monkeypatch
+    ):
+        async def fail_command(command):
+            return "No entity was found"
+
+        monkeypatch.setattr(mock_mc, "run_as_player", fail_command)
+
+        result = await execute_action(mock_mc, ActionType.EQUIP_BEST_WEAPON, {})
+
+        assert result.success is False
+        assert "No entity was found" in result.message
+
+    async def test_equip_best_weapon_propagates_equip_command_failure(self, mock_mc, monkeypatch):
+        async def fail_equip_command(command):
+            if "Inventory" in command:
+                return 'Inventory: [{id:"minecraft:diamond_sword",Count:1b,Slot:3b}]'
+            return "Source stack is empty"
+
+        monkeypatch.setattr(mock_mc, "run_as_player", fail_equip_command)
+
+        result = await execute_action(mock_mc, ActionType.EQUIP_BEST_WEAPON, {})
+
+        assert result.success is False
+        assert "Source stack is empty" in result.message
+
+    def test_action_schema_preserves_inventory_actions(self):
+        from minecraft_ai_bridge.llm.client import ACTION_TOOL
+
+        actions = ACTION_TOOL["function"]["parameters"]["properties"]["action"]["enum"]
+
+        assert "equip_best_weapon" in actions
+        assert "equip_item" in actions
+        assert "drop_item" in actions
 
 
 # ── Inventory actions ────────────────────────────────────────────────────

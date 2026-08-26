@@ -103,6 +103,8 @@ This document outlines the development priorities, completed work, and future pl
   - Detect nearby mobs and avoid dangerous situations
   - Attack manageable threats and flee from overwhelming threats
 - [ ] **Weapon selection and usage**
+  - [x] Select and equip strongest supported melee weapon in the hotbar
+  - [ ] Extend selection to main-inventory transfer and broader loadout policy
 - [ ] **Armor management**
 - [ ] **Proper crafting** (not just `/give`)
   - Recipe matching

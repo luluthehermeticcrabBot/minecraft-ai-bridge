@@ -50,6 +50,7 @@ ACTION_TOOL: dict[str, Any] = {
                         "interact",
                         "check_inventory",
                         "equip_item",
+                        "equip_best_weapon",
                         "craft_item",
                         "drop_item",
                         "attack",

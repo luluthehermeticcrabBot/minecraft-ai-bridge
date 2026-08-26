@@ -10,10 +10,13 @@ import contextlib
 import logging
 import math
 import re
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .observer import InventorySlot
 
 from .mc_api import McpqClient
 
@@ -43,6 +46,7 @@ class ActionType(StrEnum):
     # ── Inventory / Items ───────────────────────────────────────────
     CHECK_INVENTORY = "check_inventory"
     EQUIP_ITEM = "equip_item"
+    EQUIP_BEST_WEAPON = "equip_best_weapon"
     CRAFT_ITEM = "craft_item"
     DROP_ITEM = "drop_item"
     EAT = "eat"
@@ -77,6 +81,44 @@ class ActionResult:
     action: ActionType
     message: str = ""
     data: dict[str, Any] = field(default_factory=dict)
+
+
+_WEAPON_SCORES: dict[str, int] = {
+    "wooden_sword": 1,
+    "golden_sword": 1,
+    "stone_sword": 2,
+    "iron_sword": 3,
+    "diamond_sword": 4,
+    "netherite_sword": 5,
+    "wooden_axe": 1,
+    "golden_axe": 1,
+    "stone_axe": 2,
+    "iron_axe": 3,
+    "diamond_axe": 4,
+    "netherite_axe": 5,
+    "trident": 4,
+    "mace": 5,
+}
+
+
+def select_best_weapon(items: Iterable[InventorySlot]) -> InventorySlot | None:
+    """Select the strongest supported melee weapon in the hotbar.
+
+    Main-inventory, armor, and offhand slots are excluded because the
+    current equip action only copies between hotbar slots.
+    """
+    candidates: list[tuple[int, InventorySlot]] = []
+    for item in items:
+        if not 0 <= item.slot <= 8 or item.count <= 0:
+            continue
+        item_id = item.item_id.removeprefix("minecraft:").lower()
+        score = _WEAPON_SCORES.get(item_id)
+        if score is not None:
+            candidates.append((score, item))
+
+    if not candidates:
+        return None
+    return max(candidates, key=lambda candidate: (candidate[0], -candidate[1].slot))[1]
 
 
 # ── Block classification ─────────────────────────────────────────────────
@@ -570,6 +612,22 @@ async def _cmd(mc: McpqClient, cmd: str) -> str:
     return raw.strip()
 
 
+_COMMAND_FAILURE_MARKERS = (
+    "no entity was found",
+    "source stack is empty",
+    "unknown or incomplete command",
+    "incorrect argument",
+    "failed to",
+    "couldn't",
+    "could not",
+)
+
+
+def _command_failed(response: str) -> bool:
+    normalized = response.casefold().strip()
+    return any(marker in normalized for marker in _COMMAND_FAILURE_MARKERS)
+
+
 # ── Movement ────────────────────────────────────────────────────────────
 
 
@@ -938,22 +996,100 @@ async def _interact(mc: McpqClient, params: dict) -> ActionResult:
 
 async def _check_inventory(mc: McpqClient, params: dict) -> ActionResult:
     resp = await _cmd(mc, "data get entity @p Inventory")
+    success = not _command_failed(resp)
     return ActionResult(
-        success=True,
+        success=success,
         action=ActionType.CHECK_INVENTORY,
-        message="Retrieved inventory",
+        message="Retrieved inventory" if success else f"Inventory read failed: {resp}",
         data={"raw_inventory": resp},
     )
 
 
 async def _equip_item(mc: McpqClient, params: dict) -> ActionResult:
     slot = params.get("slot", 0)
-    resp = await _cmd(mc, f"item replace entity @p hotbar.0 with entity @p hotbar.{slot}")
+    resp = await _cmd(
+        mc,
+        f"item replace entity @p weapon.mainhand from entity @p hotbar.{slot}",
+    )
+    success = not _command_failed(resp)
+    return ActionResult(
+        success=success,
+        action=ActionType.EQUIP_ITEM,
+        message=(
+            f"Equipped item from hotbar slot {slot}"
+            if success
+            else f"Could not equip item from hotbar slot {slot}: {resp}"
+        ),
+        data={"slot": slot, "response": resp},
+    )
+
+
+async def _equip_best_weapon(mc: McpqClient, params: dict) -> ActionResult:
+    """Equip the strongest supported weapon already in the hotbar."""
+    from .observer import _parse_inventory_nbt
+
+    inventory_result = await _check_inventory(mc, {})
+    if not inventory_result.success:
+        return ActionResult(
+            success=False,
+            action=ActionType.EQUIP_BEST_WEAPON,
+            message=f"Could not read inventory: {inventory_result.message}",
+            data={"available_weapon": False},
+        )
+    items = _parse_inventory_nbt(inventory_result.data.get("raw_inventory", ""))
+    weapon = select_best_weapon(items)
+    if weapon is None:
+        return ActionResult(
+            success=False,
+            action=ActionType.EQUIP_BEST_WEAPON,
+            message="No supported weapon found in the hotbar.",
+            data={"available_weapon": False},
+        )
+
+    selected_slot = (await mc.get_player_info()).get("selected_item_slot", 0)
+    selected_slot = int(selected_slot) if isinstance(selected_slot, int) else 0
+    if not 0 <= selected_slot <= 8:
+        selected_slot = 0
+
+    if weapon.slot == selected_slot:
+        return ActionResult(
+            success=True,
+            action=ActionType.EQUIP_BEST_WEAPON,
+            message=f"Best weapon already equipped: {weapon.item_id}",
+            data={
+                "available_weapon": True,
+                "already_equipped": True,
+                "item_id": weapon.item_id,
+                "slot": weapon.slot,
+            },
+        )
+
+    equip_result = await _equip_item(mc, {"slot": weapon.slot})
+    if not equip_result.success:
+        return ActionResult(
+            success=False,
+            action=ActionType.EQUIP_BEST_WEAPON,
+            message=f"Could not equip best weapon: {equip_result.message}",
+            data={
+                "available_weapon": True,
+                "already_equipped": False,
+                "item_id": weapon.item_id,
+                "slot": weapon.slot,
+                "response": equip_result.data.get("response", ""),
+            },
+        )
+
     return ActionResult(
         success=True,
-        action=ActionType.EQUIP_ITEM,
-        message=f"Equipped item from slot {slot}",
-        data={"slot": slot, "response": resp},
+        action=ActionType.EQUIP_BEST_WEAPON,
+        message=f"Equipped best weapon: {weapon.item_id} from hotbar slot {weapon.slot}",
+        data={
+            "available_weapon": True,
+            "already_equipped": False,
+            "item_id": weapon.item_id,
+            "slot": weapon.slot,
+            "response": equip_result.data.get("response", ""),
+        },
     )
 
 
@@ -1887,6 +2023,7 @@ _HANDLERS: dict[ActionType, Handler] = {
     ActionType.INTERACT: _interact,
     ActionType.CHECK_INVENTORY: _check_inventory,
     ActionType.EQUIP_ITEM: _equip_item,
+    ActionType.EQUIP_BEST_WEAPON: _equip_best_weapon,
     ActionType.CRAFT_ITEM: _craft_item,
     ActionType.DROP_ITEM: _drop_item,
     ActionType.EAT: _eat,
