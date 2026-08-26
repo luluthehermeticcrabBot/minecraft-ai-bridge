@@ -88,7 +88,7 @@ chmod +x scripts/download-plugins.sh
 ./scripts/download-plugins.sh
 ```
 
-This downloads the MCPQ v2.2 plugin jar into `mcpq-plugins/`.
+This downloads the MCPQ v2.2 plugin and builds the bot plugin into `mcpq-plugins/`.
 
 ### 4. Configure
 
@@ -175,8 +175,7 @@ Set `LLM_PROVIDER` and `LLM_MODEL` in your env or config.yaml to switch.
 The `docker-compose.yml` provides two services:
 
 ```bash
-# Download the MCPQ plugin first
-./scripts/download-plugins.sh
+# Download MCPQ and build the bot plugin
 
 # Start the Paper server
 docker compose up -d minecraft
@@ -315,7 +314,7 @@ minecraft-ai-bridge/
 ├── pyproject.toml                  # Package metadata & dependencies
 ├── .env.example                    # Environment variable reference
 ├── scripts/
-│   └── download-plugins.sh         # MCPQ plugin downloader
+│   └── download-plugins.sh         # MCPQ downloader and bot plugin builder
 ├── mcpq-plugins/                   # Mounted plugin directory
 ├── mcpq-config/                    # MCPQ plugin configuration
 ├── minecraft_ai_bridge/

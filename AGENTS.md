@@ -44,8 +44,8 @@
 
 ### Infrastructure
 - `Dockerfile` — `python:3.13-slim`, pip installs the package
-- `docker-compose.yml` — Paper server (itzg/minecraft-server:latest with PAPER type, 1.21.4) + bridge service. MCPQ on port 1789. Plugin mounts. Fakeplayer plugins. OPS env var with operator usernames.
-- `scripts/download-plugins.sh` — downloads MCPQ v2.2 jar
+- `docker-compose.yml` — Paper server (itzg/minecraft-server:latest with `VERSION=LATEST`, currently Paper 26.2) + bridge service. MCPQ on port 1789. Custom bot plugin mount. OPS env var with operator usernames.
+- `scripts/download-plugins.sh` — downloads MCPQ v2.2 jar and builds the bot plugin
 - `mcpq-config/config.yml` — MCPQ bound to `0.0.0.0:1789`
 - `mcpq-plugins/` — mounted plugin directory
 - `.env.example`, `.gitignore`, `config.yaml`

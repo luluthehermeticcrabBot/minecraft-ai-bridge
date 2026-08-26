@@ -20,7 +20,7 @@ This starts a complete latest stable Paper server (currently Paper 26.2) with MC
 git clone <repo-url>
 cd minecraft-ai-bridge
 
-# Download the MCPQ plugin jar
+# Download MCPQ and build the bot plugin
 chmod +x scripts/download-plugins.sh
 ./scripts/download-plugins.sh
 ```
