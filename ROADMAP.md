@@ -10,7 +10,7 @@ This document outlines the development priorities, completed work, and future pl
 ## 🎯 Current Status
 
 **Version**: 0.5.1 (unreleased)
-**Test Coverage**: 319 deterministic tests passing; integration tests require Paper/MCPQ and an LLM provider
+**Test Coverage**: 330 deterministic tests passing; integration tests require Paper/MCPQ and an LLM provider
 **Overall Health**: ✅ Core behavior stable; CI and release hardening in progress
 
 ---
@@ -53,7 +53,7 @@ This document outlines the development priorities, completed work, and future pl
 - [x] I28: Structure respect rules (prompt guidance to not build over existing builds)
 
 ### Testing
-- [x] 319 deterministic tests passing (MockMcpqClient-based, no server needed)
+- [x] 330 deterministic tests passing (MockMcpqClient-based, no server needed)
 - [ ] Integration tests require Paper/MCPQ and an LLM provider
 - [x] Goal-verification helpers (`actions_taken()`, `position_reached()`)
 

@@ -173,6 +173,9 @@ section. This is enforced by the AGENTS.md "CHANGELOG.md" rule.
   This caused the agent to charge a nearby mob because it tripped
   on a cactus — fixing this required a damage-source check
   (`LastHurtByEntity`) and a flee path for high-threat scenarios.
+- `equip_best_weapon` now skips malformed inventory records instead of
+  raising during weapon selection; nonzero item damage remains metadata-only
+  until max-durability data is available.
 
 ### Removed
 
