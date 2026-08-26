@@ -164,6 +164,9 @@ section. This is enforced by the AGENTS.md "CHANGELOG.md" rule.
   Failed LLM-selected actions include an explicit recovery hint and receive
   at most one guarded retry decision on the next turn; identical retries
   are rejected without repeating side effects.
+- Live integration CI is now opt-in via the `RUN_LIVE_INTEGRATION`
+  repository variable and requires a configured Paper/MCPQ environment plus
+  `OPENROUTER_API_KEY`; deterministic checks remain mandatory on every PR.
 
 ### Fixed
 
