@@ -1047,7 +1047,8 @@ async def _equip_best_weapon(mc: McpqClient, params: dict) -> ActionResult:
         )
 
     selected_slot = (await mc.get_player_info()).get("selected_item_slot", 0)
-    if type(selected_slot) is not int or not 0 <= selected_slot <= 8:
+    selected_slot = int(selected_slot) if isinstance(selected_slot, int) else 0
+    if not 0 <= selected_slot <= 8:
         selected_slot = 0
 
     if weapon.slot == selected_slot:

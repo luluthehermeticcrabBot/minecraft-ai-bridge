@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from mcpq.nbt import NbtInt
 
 import minecraft_ai_bridge.minecraft.actions as action_module
 from minecraft_ai_bridge.minecraft.actions import (
@@ -269,7 +270,7 @@ class TestEquipment:
         )
 
     async def test_equip_best_weapon_respects_nonzero_selected_slot(self, mock_mc):
-        mock_mc.set_player_nbt("SelectedItemSlot", 3)
+        mock_mc.set_player_nbt("SelectedItemSlot", NbtInt(3))
         mock_mc.set_inventory(
             [
                 {"item_id": "iron_sword", "count": 1, "slot": 3},
