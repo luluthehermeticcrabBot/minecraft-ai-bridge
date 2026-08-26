@@ -361,6 +361,6 @@ pytest tests/test_integration.py -v
 pytest tests/ -v --tb=short
 ```
 
-Integration tests connect to a real MCPQ server and use real LLM inference (OpenRouter `openai/gpt-oss-20b`). Ensure your `.env` has a valid `OPENROUTER_API_KEY` and the Paper server is running.
+Integration tests connect to the locally provisioned Paper/MCPQ server and use real LLM inference (OpenRouter `openai/gpt-oss-20b`). Ensure your `.env` has a valid `OPENROUTER_API_KEY`, Docker is available, and run `docker compose up -d --wait minecraft` before running the tests.
 
 Unit tests use `MockMcpqClient` — an in-memory MCPQ mock that simulates a 3D world deterministically. No server or LLM needed.

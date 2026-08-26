@@ -50,6 +50,22 @@ jobs:
       - name: Check import sorting
         run: ruff check --select I minecraft_ai_bridge/ tests/
 
+
+  bot-plugin:
+    name: Bot Plugin (latest Paper)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - name: Build bot plugin against latest Paper
+        run: ./bot-plugin/gradlew --no-daemon clean build
+
   test:
     name: Unit Tests (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
@@ -81,12 +97,17 @@ jobs:
   integration:
     name: Integration Tests (opt-in)
     runs-on: ubuntu-latest
-    # Live integration tests require a Paper/MCPQ server and bot plugin.
-    # Set RUN_LIVE_INTEGRATION=true only when this runner has that environment.
+    # This job provisions the latest stable Paper server from docker-compose.yml.
+    # Set RUN_LIVE_INTEGRATION=true only when provider-backed tests are desired.
     if: ${{ vars.RUN_LIVE_INTEGRATION == 'true' }}
     env:
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      MC_API_HOST: localhost
+      MC_API_PORT: "1789"
+      MC_API_PLAYER_NAME: AIBot
     steps:
+      - uses: actions/checkout@v4
+
       - name: Check integration prerequisites
         shell: bash
         run: |
@@ -95,7 +116,11 @@ jobs:
             exit 1
           fi
 
-      - uses: actions/checkout@v4
+      - name: Set up Java 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
 
       - name: Set up Python ${{ env.PYTHON_VERSION }}
         uses: actions/setup-python@v5
@@ -112,5 +137,15 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
+      - name: Prepare latest Paper server and plugins
+        run: ./scripts/download-plugins.sh
+
+      - name: Start latest Paper server
+        run: docker compose up -d --wait minecraft
+
       - name: Run integration tests
         run: pytest tests/test_integration.py -v --tb=short --timeout=120
+
+      - name: Stop Paper server
+        if: ${{ always() }}
+        run: docker compose down -v

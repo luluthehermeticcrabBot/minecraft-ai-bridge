@@ -40,7 +40,7 @@ if [ ! -x "${BOT_PLUGIN_DIR}/gradlew" ]; then
     echo "✗ Bot plugin Gradle wrapper not found at ${BOT_PLUGIN_DIR}/gradlew." >&2
     exit 1
 fi
-echo "↓ Building bot plugin against the latest Paper 26.2 dev bundle..."
+echo "↓ Building bot plugin against the latest stable Paper dev bundle..."
 (cd "$BOT_PLUGIN_DIR" && ./gradlew clean build --no-daemon)
 cp "${BOT_PLUGIN_DIR}/build/libs/mc-bot-plugin-1.0.0.jar" "$BOT_PLUGIN_JAR"
 echo "✓ Saved $(basename "$BOT_PLUGIN_JAR")"

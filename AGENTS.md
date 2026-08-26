@@ -87,9 +87,9 @@ examples and the conventions block at the top.
 - **Inventory tracking**: Inventory parsed into structured `InventorySlot` objects; observer grabs via `/data get entity @p Inventory` and inventory manager tracks slots.
 
 ### Paper / MCPQ
-- **Paper latest stable** (currently 26.2 build #119; Mojang YY numbering): MCPQ v2.2 works. Paper API 26.2.build.119-stable.
+- **Paper latest stable** (currently 26.2 build #119; Mojang YY numbering): MCPQ v2.2 works. Docker resolves `VERSION=LATEST`; Paperweight and CI resolve the matching latest stable version from Paper's Fill API.
 - **Bot plugin**: Custom `mc-bot-plugin-1.0.0.jar` replaces tanyaofei/fakeplayer. Built in `bot-plugin/` with Gradle + paperweight-userdev (Java 25). Provides `/botsummon <name>` command that creates a ServerPlayer entity MCPQ can detect.
-- **Plugin version pinning**: MCPQ jar is downloaded from GitHub releases. The bot plugin is built locally.
+- **Plugin version pinning**: MCPQ jar is downloaded from GitHub releases. The bot plugin version is fixed, but its Paper dev bundle is resolved dynamically at build time.
 - **Known Paper 26.x issues**:
   - `time query daytime` throws CommandException — use `time query day` instead (fixed in bridge code)
   - `setblock` commands via MCPQ may have array-related issues (mitigated in MCPQ client)

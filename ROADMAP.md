@@ -54,7 +54,7 @@ This document outlines the development priorities, completed work, and future pl
 
 ### Testing
 - [x] 330 deterministic tests passing (MockMcpqClient-based, no server needed)
-- [ ] Integration tests require Paper/MCPQ and an LLM provider
+- [ ] Integration tests require Docker-provisioned latest Paper/MCPQ and an LLM provider
 - [x] Goal-verification helpers (`actions_taken()`, `position_reached()`)
 
 ### P2: Observer and Prompt Reliability (Complete)
@@ -211,9 +211,8 @@ This document outlines the development priorities, completed work, and future pl
 - **Coverage**: Action handlers, NBT parsing, memory, goals, config, inventory, chat commands, pathfinding, and orchestrator recovery
 
 ### Integration Tests
-- **Run in CI**: ⚠️ Only with `OPENROUTER_API_KEY`
-- **Dependencies**: Paper server + MCPQ plugin + LLM provider
-- **Coverage**: Full think-act-observe loop and provider-backed inference
+- **Run in CI**: ⚠️ Only when `RUN_LIVE_INTEGRATION=true`
+- **Dependencies**: Docker, latest Paper server + MCPQ + bot plugin, and LLM provider
 
 ### Manual Testing
 - **Local Docker setup**: Required for full end-to-end testing
