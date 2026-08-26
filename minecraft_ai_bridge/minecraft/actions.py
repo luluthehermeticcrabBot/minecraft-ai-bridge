@@ -1613,7 +1613,7 @@ async def _scan_entities(mc: McpqClient, params: dict) -> ActionResult:
 async def _attack(mc: McpqClient, params: dict) -> ActionResult:
     """Attack a target entity using ``/damage``.
 
-    Paper 26.1.x broke ``execute as @p at @p run attack`` (throws
+    Paper 26.x broke ``execute as @p at @p run attack`` (throws
     CommandException), so this action uses the ``/damage`` command
     instead, which has been available since MC 1.20.5.
 

@@ -87,10 +87,10 @@ examples and the conventions block at the top.
 - **Inventory tracking**: Inventory parsed into structured `InventorySlot` objects; observer grabs via `/data get entity @p Inventory` and inventory manager tracks slots.
 
 ### Paper / MCPQ
-- **Paper 26.1.2** (Mojang YY numbering, April 2026): MCPQ v2.2 works. Paper API 26.1.2.build.63-stable.
-- **Bot plugin**: Custom `mc-bot-plugin-1.0.0.jar` replaces tanyaofei/fakeplayer. Built in `bot-plugin/` (Maven, Java 25). Provides `/botsummon <name>` command that creates a ServerPlayer entity MCPQ can detect.
+- **Paper latest stable** (currently 26.2 build #119; Mojang YY numbering): MCPQ v2.2 works. Paper API 26.2.build.119-stable.
+- **Bot plugin**: Custom `mc-bot-plugin-1.0.0.jar` replaces tanyaofei/fakeplayer. Built in `bot-plugin/` with Gradle + paperweight-userdev (Java 25). Provides `/botsummon <name>` command that creates a ServerPlayer entity MCPQ can detect.
 - **Plugin version pinning**: MCPQ jar is downloaded from GitHub releases. The bot plugin is built locally.
-- **Known Paper 26.1.2 issues**:
+- **Known Paper 26.x issues**:
   - `time query daytime` throws CommandException — use `time query day` instead (fixed in bridge code)
   - `setblock` commands via MCPQ may have array-related issues (mitigated in MCPQ client)
   - `defaultgamemode` command format changed (use `gamemode` instead)
@@ -100,7 +100,7 @@ examples and the conventions block at the top.
 - **config.yaml volume mount**: Mounted read-only at `/app/config.yaml`. Changes require `docker compose restart bridge`.
 
 ### Code Quality
-- **Tests**: 182 tests total (160 unit + 22 integration). Unit tests use `MockMcpqClient` for deterministic MCPQ simulation. Integration tests use a real MCPQ server + real LLM (OpenRouter `openai/gpt-oss-20b`) for end-to-end validation. All tests run against Paper 26.1.2. Run with `pytest tests/`.
+- **Tests**: 182 tests total (160 unit + 22 integration). Unit tests use `MockMcpqClient` for deterministic MCPQ simulation. Integration tests use a real MCPQ server + real LLM (OpenRouter `openai/gpt-oss-20b`) for end-to-end validation. All tests run against the latest stable Paper release (currently 26.2). Run with `pytest tests/`.
 - **No type checking in CI**: `pyproject.toml` has dev deps for mypy/ruff but no CI setup.
 - **gRPC stubs are synchronous**: MCPQ generated stubs block; dispatched via `asyncio.to_thread`. Not ideal but works.
 - **RCON client is unmaintained**: Since the MCPQ migration, `rcon.py` isn't tested. Consider removing or marking deprecated.
