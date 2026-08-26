@@ -286,6 +286,21 @@ class TestEquipment:
             "item replace entity AIBot weapon.mainhand from entity AIBot hotbar.5"
         )
 
+    async def test_equip_best_weapon_detects_nonzero_selected_best_weapon(self, mock_mc):
+        mock_mc.set_player_nbt("SelectedItemSlot", NbtInt(3))
+        mock_mc.set_inventory(
+            [
+                {"item_id": "diamond_sword", "count": 1, "slot": 3},
+                {"item_id": "iron_sword", "count": 1, "slot": 5},
+            ]
+        )
+
+        result = await execute_action(mock_mc, ActionType.EQUIP_BEST_WEAPON, {})
+
+        assert result.success is True
+        assert result.data["already_equipped"] is True
+        assert not any("item replace" in command for command in mock_mc.commands_ran)
+
     async def test_equip_best_weapon_avoids_redundant_main_hand_replace(self, mock_mc):
         mock_mc.set_inventory([{"item_id": "netherite_sword", "count": 1, "slot": 0}])
 
