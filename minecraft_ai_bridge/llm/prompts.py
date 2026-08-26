@@ -278,3 +278,13 @@ def summarize_result(action: str, result: dict) -> str:
     msg = result.get("message", "")
     status = "✓" if success else "✗"
     return f"{status} {action}: {msg}"
+
+
+def format_failure_hint(action: str, message: str) -> str:
+    """Explain a failed action and constrain the next-turn recovery."""
+    return (
+        "=== Recovery Required ===\n"
+        f"The previous action '{action}' failed: {message}\n"
+        "The world may have changed partially. Choose a different action or "
+        "materially different parameters; do not blindly repeat the same attempt."
+    )

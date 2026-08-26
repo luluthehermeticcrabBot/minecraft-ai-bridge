@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import math
+import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -1659,6 +1661,32 @@ async def _check_weather(mc: McpqClient, params: dict) -> ActionResult:
     )
 
 
+_HEALTH_RESULT_RE = re.compile(
+    r"\bhealth\s*:\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+)"
+    r"(?:[eE][+-]?\d+)?[bBsSlLfFdD]?)",
+    re.IGNORECASE,
+)
+_NUMERIC_RESULT_RE = re.compile(
+    r"^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?[bBsSlLfFdD]?$"
+)
+
+
+def _parse_health_response(raw: str | None) -> float | None:
+    """Parse current health, never interpreting max-health output as current."""
+    text = str(raw or "").strip()
+    match = _HEALTH_RESULT_RE.search(text)
+    token = match.group(1) if match else text
+    if not _NUMERIC_RESULT_RE.fullmatch(token):
+        return None
+    if token[-1].isalpha():
+        token = token[:-1]
+    try:
+        value = float(token)
+    except ValueError:
+        return None
+    return value if math.isfinite(value) and value >= 0 else None
+
+
 async def _check_health(mc: McpqClient, params: dict) -> ActionResult:
     """Check the player's health.
 
@@ -1670,18 +1698,8 @@ async def _check_health(mc: McpqClient, params: dict) -> ActionResult:
     resp = await _cmd(mc, "data get entity @p Health")
     result_data: dict[str, Any] = {"health_raw": resp}
 
-    # If the basic command returned 0 or empty, try MCPQ NBT fallback
-    parsed = None
-    try:
-        import re as _re
-
-        m = _re.search(r"(-?\d+\.?\d*)", resp or "")
-        if m:
-            parsed = float(m.group(1))
-    except (ValueError, TypeError):
-        pass
-
-    if parsed is not None and parsed > 0:
+    parsed = _parse_health_response(resp)
+    if parsed is not None:
         return ActionResult(
             success=True,
             action=ActionType.CHECK_HEALTH,
@@ -1693,40 +1711,42 @@ async def _check_health(mc: McpqClient, params: dict) -> ActionResult:
     try:
         info = await mc.get_player_info()
         nbt_health = info.get("health")
-        if nbt_health is not None and float(nbt_health) > 0:
+        nbt_value = _parse_health_response(str(nbt_health))
+        if nbt_value is not None:
             result_data["health_raw"] = str(nbt_health)
             result_data["health_source"] = "mcpq_nbt"
             return ActionResult(
                 success=True,
                 action=ActionType.CHECK_HEALTH,
-                message=f"Health: {nbt_health}",
+                message=f"Health: {nbt_value}",
                 data=result_data,
             )
     except Exception:
         pass
 
-    # Fallback 2: try /attribute to get max health (works on any living entity)
+    # Fallback 2: report max health separately; it is not current health.
     try:
         attr_resp = await _cmd(mc, "attribute @p minecraft:generic.max_health get")
         if attr_resp and "Has no attribute" not in attr_resp:
-            result_data["health_raw"] = attr_resp
-            result_data["health_source"] = "attribute"
+            result_data["health_raw"] = ""
+            result_data["max_health_raw"] = attr_resp
+            result_data["health_source"] = "attribute_max"
             return ActionResult(
                 success=True,
                 action=ActionType.CHECK_HEALTH,
-                message=f"Health max: {attr_resp}",
+                message=f"Current health unavailable; max health: {attr_resp}",
                 data=result_data,
             )
     except Exception:
         pass
 
-    # Ultimate fallback: assume full health (20) if nothing worked
-    result_data["health_raw"] = "20.0"
-    result_data["health_source"] = "default"
+    # No current-health source succeeded; do not guess a value.
+    result_data["health_raw"] = ""
+    result_data["health_source"] = "unknown"
     return ActionResult(
         success=True,
         action=ActionType.CHECK_HEALTH,
-        message="Health: 20.0 (assumed — attribute unavailable)",
+        message="Current health unavailable",
         data=result_data,
     )
 

@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from ..config import AppConfig
 from ..llm.client import LLMClient, OpenCodeServerClient, create_llm_client
 from ..llm.models import LLMResponse, Message, Role
-from ..llm.prompts import SYSTEM_PROMPT, format_state
+from ..llm.prompts import SYSTEM_PROMPT, format_failure_hint, format_state
 from ..minecraft import ActionResult, ActionType, McpqClient, Observer, WorldState, execute_action
 from .chat_commands import ChatCommandHandler
 from .goal_manager import GoalManager
@@ -34,6 +34,7 @@ class AgentContext:
     memory: str = ""
     notable_facts: str = ""
     last_action_result: str = ""
+    retry_hint: str = ""
     turn: int = 0
 
 
@@ -58,6 +59,10 @@ class Orchestrator:
             max_depth=config.goals.max_depth,
         )
         self._last_result: ActionResult | None = None
+        self._retry_pending = False
+        self._retry_action = ""
+        self._retry_params: dict = {}
+        self._retry_hint = ""
         self._turn = 0
         self._verbose = config.bridge.verbose
         self._max_iterations = config.bridge.max_iterations
@@ -209,17 +214,22 @@ class Orchestrator:
         if self._preservation is not None:
             reflex_result = await self._preservation.evaluate(world)
 
+        retry_was_pending = self._retry_pending
         # ── Build context for LLM ─────────────────────────────────
         context = self._build_context(world)
         if self._verbose:
             self._log_context(context)
 
         # ── Think (LLM decides) ───────────────────────────────────
-        # Build message list: goal + state + explicit last-result hint
+        # Build message list: goal + state + bounded memory context.
         messages: list[Message] = [
             Message(role=Role.USER, content=context.goal),
             Message(role=Role.USER, content=context.state),
         ]
+
+        if context.notable_facts:
+            messages.append(Message(role=Role.USER, content=context.notable_facts))
+        messages.extend(self._memory.bounded_recent_messages())
 
         # Include the last action result explicitly so the LLM can see
         # what happened (especially failures).
@@ -229,9 +239,8 @@ class Orchestrator:
                     role=Role.USER, content=f"=== Last Action ===\n{context.last_action_result}"
                 )
             )
-
-        # Append recent history (capped to avoid unbounded growth)
-        messages.extend(self._memory.recent_messages(10))
+        if context.retry_hint:
+            messages.append(Message(role=Role.USER, content=context.retry_hint))
 
         response = await self._llm.decide(
             system_prompt=SYSTEM_PROMPT,
@@ -244,17 +253,44 @@ class Orchestrator:
             )
 
         # ── Act ───────────────────────────────────────────────────
-        # If the self-preservation layer wants to act, use its result
-        # and skip the LLM-driven action this turn. The reflex result
-        # is treated as if the LLM had decided on it, so the rest of
-        # the bookkeeping (recording, failure tracking, termination
-        # check) runs unchanged.
+        # A retry is evaluated on the following turn, but this block
+        # still executes at most one action per turn.
         if reflex_result is not None:
             result = reflex_result
             response_action = result.action.value
+            self._clear_retry()
+        elif retry_was_pending and (
+            response.action == self._retry_action
+            and response.action_params == self._retry_params
+        ):
+            result = ActionResult(
+                success=False,
+                action=self._response_action_type(response.action),
+                message=(
+                    "Retry rejected: identical action and parameters would "
+                    "repeat a side effect."
+                ),
+                data={"retry_rejected": "identical_action"},
+            )
+            self._last_result = result
+            response_action = response.action
+            self._clear_retry()
         else:
             result = await self._act(response)
             response_action = response.action
+            self._clear_retry()
+            if (
+                not result.success
+                and not retry_was_pending
+                and response.action not in {"wait", "done"}
+            ):
+                self._retry_pending = True
+                self._retry_action = response.action
+                self._retry_params = dict(response.action_params)
+                self._retry_hint = format_failure_hint(
+                    response.action,
+                    result.message,
+                )
 
         # Track consecutive failures — count both action failures and exceptions
         if result.success:
@@ -306,12 +342,13 @@ class Orchestrator:
             f"=== Goal ===\n{self._goals.progress}\n\nCurrent task: {self._goals.current_goal}"
         )
 
-        # Memory context
-        memory_str = self._memory.short_term_summary
+        # Memory context is bounded before it reaches logs or the LLM.
+        recent_messages = self._memory.bounded_recent_messages()
+        memory_str = "\n".join(message.content for message in recent_messages)
         if not memory_str.strip():
             memory_str = "(no recent actions)"
 
-        facts = self._memory.notable_facts()
+        facts = self._memory.bounded_notable_facts()
 
         # Last action result
         last_result = ""
@@ -329,8 +366,24 @@ class Orchestrator:
             memory=f"=== Recent Actions ===\n{memory_str}",
             notable_facts=facts,
             last_action_result=last_result,
+            retry_hint=self._retry_hint,
             turn=self._turn,
         )
+
+    def _clear_retry(self) -> None:
+        """Clear the single pending retry opportunity."""
+        self._retry_pending = False
+        self._retry_action = ""
+        self._retry_params = {}
+        self._retry_hint = ""
+
+    @staticmethod
+    def _response_action_type(action: str) -> ActionType:
+        """Map a response action to an enum for synthetic results."""
+        try:
+            return ActionType(action)
+        except ValueError:
+            return ActionType.WAIT
 
     async def _act(self, response: LLMResponse) -> ActionResult:
         """Execute the LLM's chosen action via the MCPQ plugin."""

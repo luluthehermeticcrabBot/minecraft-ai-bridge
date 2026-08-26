@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from minecraft_ai_bridge.minecraft.observer import (
     InventorySlot,
+    _parse_health_value,
     _parse_inventory_nbt,
     _parse_nbt_list,
     _parse_nbt_value,
@@ -47,12 +48,22 @@ class TestObserver:
         assert state.health is not None
         assert state.health == 15.0
 
-    async def test_observe_health_fallback(self, mock_mc):
+    async def test_observe_health_fallback_does_not_guess(self, mock_mc, monkeypatch):
         from minecraft_ai_bridge.minecraft.observer import Observer
 
+        original = mock_mc._run_command_blocking
+
+        async def unavailable_health(command: str) -> str:
+            if command.startswith("data get entity AIBot Health"):
+                return "No entity was found"
+            if command.startswith("attribute AIBot minecraft:generic.max_health"):
+                return "Has no attribute"
+            return await original(command)
+
+        monkeypatch.setattr(mock_mc, "_run_command_blocking", unavailable_health)
         obs = Observer(mock_mc)
         state = await obs.observe()
-        assert state.health is not None
+        assert state.health is None
 
     async def test_observe_hunger(self, mock_mc):
         from minecraft_ai_bridge.minecraft.observer import Observer
@@ -115,7 +126,68 @@ class TestObserver:
         mock_mc.set_biome(RuntimeError("MCPQ error"))
         obs = Observer(mock_mc)
         state = await obs.observe()
-        assert state.biome == ""  # graceful degradation
+        assert state.biome == "unknown"
+
+    async def test_observe_biome_caches_known_and_unknown_results(self, mock_mc, monkeypatch):
+        from minecraft_ai_bridge.minecraft.observer import Observer
+
+        calls = 0
+        original = mock_mc.get_biome
+
+        async def counted_biome(x: int, y: int, z: int) -> str:
+            nonlocal calls
+            calls += 1
+            return await original(x, y, z)
+
+        monkeypatch.setattr(mock_mc, "get_biome", counted_biome)
+        obs = Observer(mock_mc)
+
+        await obs.observe()
+        await obs.observe()
+        assert calls == 1
+
+        mock_mc.set_position(16.0, 65.0, 0.0)
+        await obs.observe()
+        assert calls == 2
+
+        mock_mc.set_biome(RuntimeError("biome unavailable"))
+        mock_mc.set_position(32.0, 65.0, 0.0)
+        unknown_state = await obs.observe()
+        await obs.observe()
+        assert unknown_state.biome == "unknown"
+        assert calls == 3
+
+    async def test_biome_does_not_infer_from_surface_block(self):
+        from minecraft_ai_bridge.minecraft.mc_api import McpqClient
+
+        class FakeClient(McpqClient):
+            def __init__(self) -> None:
+                super().__init__(player_name="NetherBot")
+                self.probes: list[str] = []
+
+            async def get_block(self, x: int, y: int, z: int) -> str:
+                raise AssertionError("biome detection must not inspect blocks")
+
+            async def run_command_blocking(self, command: str) -> str:
+                self.probes.append(command)
+                if command == (
+                    "execute as NetherBot at @s if biome 0 65 0 minecraft:forest "
+                    "run say __biome_forest__"
+                ):
+                    return "[Server] __biome_forest__"
+                return ""
+
+        client = FakeClient()
+
+        assert await client.get_biome(0, 65, 0) == "forest"
+        assert client.probes == [
+            "execute as NetherBot at @s if biome 0 65 0 minecraft:plains "
+            "run say __biome_plains__",
+            "execute as NetherBot at @s if biome 0 65 0 minecraft:desert "
+            "run say __biome_desert__",
+            "execute as NetherBot at @s if biome 0 65 0 minecraft:forest "
+            "run say __biome_forest__",
+        ]
 
 
 class TestNbtValueParser:
@@ -153,6 +225,14 @@ class TestNbtValueParser:
         assert _parse_nbt_value("Health: 20.0d") == 20.0
         assert _parse_nbt_value("Health: 0.0d") == 0.0
         assert _parse_nbt_value("15.5d") == 15.5
+    def test_parse_health_named_field_and_custom_maximum(self):
+        assert _parse_health_value("Health: 40.0d") == 40.0
+        assert _parse_health_value("MaxHealth: 100.0d") is None
+
+    def test_parse_health_rejects_invalid_values(self):
+        assert _parse_health_value("Health: -1.0d") is None
+        assert _parse_health_value("Health: NaNd") is None
+        assert _parse_health_value("No entity was found") is None
 
 
 class TestNbtListParser:
@@ -212,6 +292,43 @@ class TestParseInventoryNbt:
         result = _parse_inventory_nbt(raw)
         assert len(result) == 1
         assert result[0].item_id == "minecraft:diamond_pickaxe"
+
+    def test_parse_key_order_case_and_damage(self):
+        raw = '[{Slot:2b,id:"minecraft:diamond_pickaxe",count:1b,damage:7s}]'
+
+        result = _parse_inventory_nbt(raw)
+
+        assert result == [
+            InventorySlot(
+                item_id="minecraft:diamond_pickaxe",
+                count=1,
+                slot=2,
+                damage=7,
+            )
+        ]
+
+    def test_parse_partial_inventory_keeps_valid_compounds(self):
+        raw = (
+            '[{id:"minecraft:dirt",Count:64b,Slot:0b},'
+            '{broken},'
+            '{id:"minecraft:stone",count:32s,slot:1b}]'
+        )
+
+        result = _parse_inventory_nbt(raw)
+
+        assert [(slot.item_id, slot.count, slot.slot) for slot in result] == [
+            ("minecraft:dirt", 64, 0),
+            ("minecraft:stone", 32, 1),
+        ]
+
+    def test_parse_signed_offhand_slot(self):
+        result = _parse_inventory_nbt(
+            '[{id:"minecraft:shield",Count:1b,Slot:-106b}]'
+        )
+        assert result == [
+            InventorySlot(item_id="minecraft:shield", count=1, slot=-106)
+        ]
+
 
     def test_parse_malformed(self):
         assert _parse_inventory_nbt("garbage") == []

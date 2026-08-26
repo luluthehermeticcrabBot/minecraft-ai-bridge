@@ -9,8 +9,10 @@ The observer provides the LLM with a high-level view of the world:
 from __future__ import annotations
 
 import asyncio
-import contextlib
+import json
 import logging
+import math
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -61,7 +63,7 @@ class Observer:
 
     def __init__(self, mc: McpqClient) -> None:
         self._mc = mc
-
+        self._biome_cache: dict[tuple[int, int], str] = {}
     async def observe(self) -> WorldState:
         """Gather a full state snapshot.  Returns a ``WorldState``."""
         state = WorldState()
@@ -87,7 +89,7 @@ class Observer:
 
         if isinstance(health_res, ActionResult) and health_res.success:
             raw = health_res.data.get("health_raw", "")
-            state.health = _parse_nbt_value(raw)
+            state.health = _parse_health_value(raw)
 
         if isinstance(hunger_res, ActionResult) and hunger_res.success:
             raw = hunger_res.data.get("hunger_raw", "")
@@ -114,15 +116,25 @@ class Observer:
         if isinstance(scan_res, ActionResult) and scan_res.success:
             state.scan_data = scan_res.data
 
-        # Best-effort biome detection
+        # Best-effort authoritative biome detection, cached per chunk.
         if state.position:
-            with contextlib.suppress(Exception):
-                state.biome = await self._mc.get_biome(
-                    int(state.position[0]),
-                    int(state.position[1]),
-                    int(state.position[2]),
-                )
-
+            chunk_key = (
+                math.floor(state.position[0] / 16),
+                math.floor(state.position[2] / 16),
+            )
+            if chunk_key in self._biome_cache:
+                state.biome = self._biome_cache[chunk_key]
+            else:
+                try:
+                    biome = await self._mc.get_biome(
+                        int(state.position[0]),
+                        int(state.position[1]),
+                        int(state.position[2]),
+                    )
+                except Exception:
+                    biome = "unknown"
+                state.biome = biome or "unknown"
+                self._biome_cache[chunk_key] = state.biome
         return state
 
     async def observe_position(self) -> tuple[float, float, float] | None:
@@ -135,11 +147,12 @@ class Observer:
 
 # ── Simple NBT-value parsers (for command output) ──────────────────────
 
-import json  # noqa: E402
-import re  # noqa: E402 — import after class uses
 
 _NBT_LIST_RE = re.compile(r"\[([^\]]+)\]")
-_NBT_VALUE_RE = re.compile(r"(-?\d+\.?\d*)[dfbsIL]?")
+_NBT_VALUE_RE = re.compile(r"(-?\d+(?:\.\d*)?(?:[eE][+-]?\d*)?)[dfbsIL]?")
+_NBT_NUMBER_RE = re.compile(
+    r"^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?[bBsSlLfFdD]?$"
+)
 
 
 def _parse_nbt_value(raw: str) -> Any:
@@ -150,87 +163,201 @@ def _parse_nbt_value(raw: str) -> Any:
     m = _NBT_VALUE_RE.search(raw)
     if m:
         val = m.group(1)
-        if "." in val:
+        if "." in val or "e" in val.lower():
             return float(val)
         return int(float(val))
     return raw
 
 
+def _parse_health_value(raw: str) -> float | None:
+    """Parse a current health value without confusing it with max health."""
+    text = str(raw or "").strip()
+    match = re.search(
+        r"\bhealth\s*:\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+)"
+        r"(?:[eE][+-]?\d+)?[bBsSlLfFdD]?)",
+        text,
+        re.IGNORECASE,
+    )
+    token = match.group(1) if match else text
+    value = _parse_snbt_number(token)
+    if value is None or value < 0:
+        return None
+    return float(value)
+
+
+def _parse_snbt_number(raw: str) -> int | float | None:
+    """Parse one complete SNBT numeric token, including its suffix."""
+    token = raw.strip().strip('"')
+    if not _NBT_NUMBER_RE.fullmatch(token):
+        return None
+    suffix = token[-1].lower() if token[-1].isalpha() else ""
+    number = token[:-1] if suffix else token
+    try:
+        value = float(number)
+    except ValueError:
+        return None
+    if not math.isfinite(value):
+        return None
+    if suffix in {"b", "s", "l"} and value.is_integer():
+        return int(value)
+    return value
+
+
+def _split_snbt_top_level(text: str) -> list[str]:
+    """Split SNBT fields while ignoring nested compounds and quoted commas."""
+    parts: list[str] = []
+    start = 0
+    brace_depth = 0
+    bracket_depth = 0
+    quote: str | None = None
+    escaped = False
+
+    for index, char in enumerate(text):
+        if quote is not None:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            continue
+        if char in {'"', "'"}:
+            quote = char
+        elif char == "{":
+            brace_depth += 1
+        elif char == "}":
+            brace_depth = max(0, brace_depth - 1)
+        elif char == "[":
+            bracket_depth += 1
+        elif char == "]":
+            bracket_depth = max(0, bracket_depth - 1)
+        elif char == "," and brace_depth == 0 and bracket_depth == 0:
+            parts.append(text[start:index].strip())
+            start = index + 1
+
+    tail = text[start:].strip()
+    if tail:
+        parts.append(tail)
+    return parts
+
+
+def _extract_snbt_compounds(text: str) -> list[str]:
+    """Extract top-level ``{...}`` compounds from an inventory list."""
+    compounds: list[str] = []
+    start: int | None = None
+    depth = 0
+    quote: str | None = None
+    escaped = False
+
+    for index, char in enumerate(text):
+        if quote is not None:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            continue
+        if char in {'"', "'"}:
+            quote = char
+        elif char == "{":
+            if depth == 0:
+                start = index
+            depth += 1
+        elif char == "}" and depth:
+            depth -= 1
+            if depth == 0 and start is not None:
+                compounds.append(text[start : index + 1])
+                start = None
+    return compounds
+
+
+def _parse_snbt_compound(compound: str) -> dict[str, str]:
+    """Parse top-level key/value pairs from one SNBT compound."""
+    body = compound.strip()
+    if not (body.startswith("{") and body.endswith("}")):
+        return {}
+    fields: dict[str, str] = {}
+    for part in _split_snbt_top_level(body[1:-1]):
+        key, separator, value = part.partition(":")
+        if not separator:
+            continue
+        normalized_key = key.strip().strip('"').strip("'").lower()
+        fields[normalized_key] = value.strip()
+    return fields
+
+
+def _strip_snbt_string(raw: str) -> str:
+    value = raw.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+        return value[1:-1]
+    return value
+
+
+def _inventory_slot_from_fields(fields: dict[str, str]) -> InventorySlot | None:
+    item_id = _strip_snbt_string(fields.get("id", ""))
+    count = _parse_snbt_number(fields.get("count", ""))
+    slot = _parse_snbt_number(fields.get("slot", ""))
+    damage = _parse_snbt_number(fields.get("damage", "0"))
+    if not item_id or not isinstance(count, (int, float)) or not float(count).is_integer():
+        return None
+    if not isinstance(slot, (int, float)) or not float(slot).is_integer():
+        return None
+    if not isinstance(damage, (int, float)) or not float(damage).is_integer():
+        return None
+    if count < 0 or damage < 0:
+        return None
+    return InventorySlot(
+        item_id=item_id,
+        count=int(count),
+        slot=int(slot),
+        damage=int(damage),
+    )
+
+
 def _parse_inventory_nbt(raw: str) -> list[InventorySlot]:
-    """Parse raw NBT inventory string into structured InventorySlot list.
-
-    Handles formats like::
-        [{id:"minecraft:dirt",Count:64b,Slot:0b},{id:"minecraft:stone",Count:32b,Slot:1b}]
-
-    Returns an empty list on any parse failure (callers should fall back
-    to the raw string).
-    """
-    if not raw or raw == "Inventory: []":
+    """Parse an NBT inventory string while preserving valid partial entries."""
+    if not raw or raw.strip() in {"[]", "Inventory: []"}:
         return []
 
-    # Normalise: convert JSON-like NBT to proper JSON
     text = raw.strip()
     if text.startswith("Inventory: "):
-        text = text[len("Inventory: ") :]
+        text = text[len("Inventory: ") :].strip()
 
-    text = text.replace("}", "},")
-    # Remove trailing comma from array
-    text = text.rstrip(",")
-
-    # Try a simple regex-based approach first (faster for well-formed data)
     items: list[InventorySlot] = []
-    # Pattern: {id:"...",Count:...b,Slot:...b,...}
-    item_pattern = re.compile(
-        r'id:\s*"([^"]+)"\s*,\s*'
-        r"Count:\s*(\d+)\s*b\s*,\s*"
-        r"Slot:\s*(-?\d+)\s*b",
-    )
-    for match in item_pattern.finditer(raw):
-        items.append(
-            InventorySlot(
-                item_id=match.group(1),
-                count=int(match.group(2)),
-                slot=int(match.group(3)),
-            )
-        )
-
-    # If regex found items, return them
+    for compound in _extract_snbt_compounds(text):
+        item = _inventory_slot_from_fields(_parse_snbt_compound(compound))
+        if item is not None:
+            items.append(item)
     if items:
         return items
 
-    # Fallback: try JSON parsing (for simulators / test data)
+    # Keep support for JSON-like simulator fixtures.
     try:
-        # Convert NBT-style booleans and byte suffixes to JSON
-        clean = text
-        # Remove trailing 'b' from numbers
-        clean = re.sub(r"(\d+)b", r"\1", clean)
-        # Quote bare keys
-        clean = re.sub(r"(\w+):", r'"\1":', clean)
-        parsed = json.loads(clean)
-        if isinstance(parsed, list):
-            for entry in parsed:
-                items.append(
-                    InventorySlot(
-                        item_id=entry.get("id", "unknown"),
-                        count=int(entry.get("Count", 1)),
-                        slot=int(entry.get("Slot", 0)),
-                    )
-                )
-    except (json.JSONDecodeError, ValueError, TypeError):
-        pass
-
+        parsed = json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        return []
+    if not isinstance(parsed, list):
+        return []
+    for entry in parsed:
+        if not isinstance(entry, dict):
+            continue
+        fields = {str(key).lower(): str(value) for key, value in entry.items()}
+        item = _inventory_slot_from_fields(fields)
+        if item is not None:
+            items.append(item)
     return items
 
 
 def _parse_nbt_list(raw: str) -> list[float] | None:
-    """Parse something like ``[1.0d, 64.0d, 3.0d]`` into ``[1.0, 64.0, 3.0]``."""
+    """Parse something like ``[1.0d, 64.0d, 3.0d]`` into floats."""
     m = _NBT_LIST_RE.search(raw)
     if not m:
         return None
     parts = m.group(1).split(",")
     out: list[float] = []
-    for p in parts:
-        val = _parse_nbt_value(p.strip())
-        if isinstance(val, (int, float)):
-            out.append(float(val))
+    for part in parts:
+        value = _parse_nbt_value(part.strip())
+        if isinstance(value, (int, float)):
+            out.append(float(value))
     return out if out else None

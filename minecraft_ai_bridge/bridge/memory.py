@@ -209,11 +209,51 @@ class AgentMemory:
         entries = list(self._short_term)[-n:]
         return [Message(role=e.role, content=e.summary) for e in entries]
 
+    def bounded_recent_messages(
+        self,
+        max_entries: int = 6,
+        max_chars: int = 6000,
+    ) -> list[Message]:
+        """Return newest complete messages within entry and character budgets."""
+        if max_entries <= 0 or max_chars <= 0:
+            return []
+
+        selected: list[Message] = []
+        total_chars = 0
+        for entry in reversed(list(self._short_term)[-max_entries:]):
+            message = Message(role=entry.role, content=entry.summary)
+            message_chars = len(message.content)
+            if total_chars + message_chars > max_chars:
+                break
+            selected.append(message)
+            total_chars += message_chars
+        selected.reverse()
+        return selected
+
+
     def notable_facts(self) -> str:
         """Format long-term memory into a string for the prompt."""
         if not self._long_term:
             return ""
         return "Notable facts:\n" + "\n".join(f"- {fact}" for fact in self._long_term[-10:])
+
+    def bounded_notable_facts(self, max_chars: int = 2000) -> str:
+        """Format newest facts within a character budget."""
+        header = "Notable facts:\n"
+        if not self._long_term or max_chars < len(header):
+            return ""
+
+        selected: list[str] = []
+        total_chars = len(header)
+        for fact in reversed(self._long_term[-10:]):
+            line = f"- {fact}"
+            separator = 1 if selected else 0
+            if total_chars + separator + len(line) > max_chars:
+                break
+            selected.append(line)
+            total_chars += separator + len(line)
+        selected.reverse()
+        return header + "\n".join(selected)
 
     def turn_count(self) -> int:
         return self._turn

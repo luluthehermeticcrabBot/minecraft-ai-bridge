@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 from minecraft_ai_bridge.llm.models import AgentGoal
-from minecraft_ai_bridge.llm.prompts import format_goal, format_state, summarize_result
+from minecraft_ai_bridge.llm.prompts import (
+    format_failure_hint,
+    format_goal,
+    format_state,
+    summarize_result,
+)
 
 
 class TestFormatGoal:
@@ -96,6 +101,14 @@ class TestSummarizeResult:
     def test_failure(self):
         r = summarize_result("break_block", {"success": False, "message": "fail"})
         assert "✗" in r
+
+    def test_failure_hint_explains_safe_retry(self):
+        hint = format_failure_hint("mine", "Tool returned no target block")
+
+        assert "mine" in hint
+        assert "Tool returned no target block" in hint
+        assert "different action" in hint.lower() or "different parameters" in hint.lower()
+        assert "partially" in hint.lower()
 
     def test_empty_message(self):
         r = summarize_result("wait", {"success": True, "message": ""})
