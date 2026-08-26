@@ -10,7 +10,7 @@ This document outlines the development priorities, completed work, and future pl
 ## 🎯 Current Status
 
 **Version**: 0.5.1 (unreleased)
-**Test Coverage**: 319 deterministic tests passing; integration tests require Paper/MCPQ and an LLM provider
+**Test Coverage**: 330 deterministic tests passing; integration tests require Paper/MCPQ and an LLM provider
 **Overall Health**: ✅ Core behavior stable; CI and release hardening in progress
 
 ---
@@ -53,8 +53,8 @@ This document outlines the development priorities, completed work, and future pl
 - [x] I28: Structure respect rules (prompt guidance to not build over existing builds)
 
 ### Testing
-- [x] 319 deterministic tests passing (MockMcpqClient-based, no server needed)
-- [ ] Integration tests require Paper/MCPQ and an LLM provider
+- [x] 330 deterministic tests passing (MockMcpqClient-based, no server needed)
+- [ ] Integration tests require Docker-provisioned latest Paper/MCPQ and an LLM provider
 - [x] Goal-verification helpers (`actions_taken()`, `position_reached()`)
 
 ### P2: Observer and Prompt Reliability (Complete)
@@ -70,14 +70,15 @@ This document outlines the development priorities, completed work, and future pl
 ### P1: Release Readiness (Current)
 
 #### CI/CD Setup
-- [ ] **Set up GitHub Actions secrets** for integration tests
+- [x] **Set up GitHub Actions secrets** for integration tests
   - `OPENROUTER_API_KEY` for LLM inference tests
   - Consider `MISTRAL_API_KEY` as alternative
 - [x] Run deterministic unit tests on all pushes and pull requests
-- [x] Gate integration tests on the configured provider secret
+- [x] Gate live integration tests on `RUN_LIVE_INTEGRATION=true` plus the provider secret
 - [x] Run Ruff linting and formatting checks
+- [ ] Provision Paper/MCPQ/bot-plugin infrastructure for live CI integration tests
 - [ ] Re-enable mypy after reconciling strict SDK types
-- [ ] **Add test matrix** for Python versions (3.11, 3.12, 3.13)
+- [x] **Test matrix** for Python versions (3.11, 3.12, 3.13)
 
 #### Code Improvements
 - [x] Fix auto-step logic to not step over hazards
@@ -210,14 +211,13 @@ This document outlines the development priorities, completed work, and future pl
 - **Coverage**: Action handlers, NBT parsing, memory, goals, config, inventory, chat commands, pathfinding, and orchestrator recovery
 
 ### Integration Tests
-- **Run in CI**: ⚠️ Only with `OPENROUTER_API_KEY`
-- **Dependencies**: Paper server + MCPQ plugin + LLM provider
-- **Coverage**: Full think-act-observe loop and provider-backed inference
+- **Run in CI**: ⚠️ Only when `RUN_LIVE_INTEGRATION=true`
+- **Dependencies**: Docker, latest Paper server + MCPQ + bot plugin, and LLM provider
 
 ### Manual Testing
 - **Local Docker setup**: Required for full end-to-end testing
 - **LLM providers**: Test with OpenAI, Anthropic, Ollama, OpenRouter, OpenCode Server
-- **Minecraft versions**: Test with Paper 26.1.2
+- **Minecraft versions**: Test with the latest stable Paper release (currently 26.2)
 ---
 
 

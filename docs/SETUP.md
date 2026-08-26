@@ -5,13 +5,14 @@ This guide covers all installation methods and configuration options for the Min
 ## Prerequisites
 
 - **Python 3.11+**
+- **Java 25+** for building the included bot plugin (the project includes a Gradle wrapper)
 - **Docker** (recommended for the Paper server) and **Docker Compose v2**
 - **An LLM provider account/key** — OpenAI, Anthropic, or OpenRouter
 - **~5GB free disk space** for the Paper server + world files
 
 ## Method 1: Docker (Recommended)
 
-This starts a complete Paper 26.1.2 server with MCPQ and the built-in bot plugin, then runs the bridge.
+This starts a complete latest stable Paper server (currently Paper 26.2) with MCPQ and the built-in bot plugin, then runs the bridge.
 
 ### Step 1: Clone and Download
 
@@ -19,7 +20,7 @@ This starts a complete Paper 26.1.2 server with MCPQ and the built-in bot plugin
 git clone <repo-url>
 cd minecraft-ai-bridge
 
-# Download the MCPQ plugin jar
+# Download MCPQ and build the bot plugin
 chmod +x scripts/download-plugins.sh
 ./scripts/download-plugins.sh
 ```
@@ -127,7 +128,7 @@ cp config.yaml config.yaml
 
 ### Step 3: Have a Paper Server with MCPQ
 
-You need a Paper 26.1.2 server with:
+You need the latest stable Paper server (currently Paper 26.2) with:
 1. [MCPQ plugin](https://github.com/mcpq/mcpq-plugin) v2.2+
 2. The included bot plugin (`bot-plugin/`) — provides `/botsummon <name>` for player entity creation
 3. MCPQ configured to listen on `0.0.0.0:1789`
@@ -159,19 +160,18 @@ minecraft-ai-bridge --list-providers
 
 If not using Docker, here's how to set up the server manually.
 
-### 1. Install Paper 26.1.2
+### 1. Install the latest stable Paper
+
+Download the latest stable Paper build from the [official Paper downloads page](https://papermc.io/downloads/paper). It currently lists Paper 26.2 build #119.
 
 ```bash
-# Download latest Paper 26.1.2 build
-PAPER_BUILD=$(curl -s "https://api.papermc.io/v2/projects/paper/versions/26.1.2/builds" | python3 -c "import json,sys; print(json.load(sys.stdin)['builds'][-1]['build'])")
-wget "https://api.papermc.io/v2/projects/paper/versions/26.1.2/builds/${PAPER_BUILD}/downloads/paper-26.1.2-${PAPER_BUILD}.jar" -O paper.jar
-
 # First run to generate files
 java -jar paper.jar nogui
 
 # Accept EULA
 echo "eula=true" > eula.txt
 ```
+
 
 ### 2. Download and Build Plugins
 
@@ -182,8 +182,8 @@ wget https://github.com/mcpq/mcpq-plugin/releases/download/v${MCPQ_VERSION}/mcpq
 
 # Build the bot plugin (provides /botsummon for player entity)
 cd bot-plugin
-mvn clean package -DskipTests
-cp target/mc-bot-plugin-*.jar ../mcpq-plugins/
+./gradlew clean build
+cp build/libs/mc-bot-plugin-1.0.0.jar ../mcpq-plugins/
 cd ..
 ```
 
@@ -361,6 +361,6 @@ pytest tests/test_integration.py -v
 pytest tests/ -v --tb=short
 ```
 
-Integration tests connect to a real MCPQ server and use real LLM inference (OpenRouter `openai/gpt-oss-20b`). Ensure your `.env` has a valid `OPENROUTER_API_KEY` and the Paper server is running.
+Integration tests connect to the locally provisioned Paper/MCPQ server and use real LLM inference (OpenRouter `openai/gpt-oss-20b`). Ensure your `.env` has a valid `OPENROUTER_API_KEY`, Docker is available, and run `docker compose up -d --wait minecraft` before running the tests.
 
 Unit tests use `MockMcpqClient` — an in-memory MCPQ mock that simulates a 3D world deterministically. No server or LLM needed.

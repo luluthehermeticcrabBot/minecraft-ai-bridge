@@ -262,5 +262,5 @@ class ThreatDetector:
 
 - YOLOv8: https://github.com/ultralytics/ultralytics
 - Minecraft Mob Detection Dataset: https://universe.roboflow.com/minecraft-1frcb/minecraft-mob-detection
-- Paper 26.1 entity damage mechanics documentation
+- Paper 26.2 entity damage mechanics documentation
 - Vanilla crafting recipe format

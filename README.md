@@ -62,7 +62,7 @@ The key difference from traditional RCON-based bridges: **MCPQ gives the agent d
 ### 1. Prerequisites
 
 - **Python 3.11+**
-- **Docker** (recommended for the Paper server) or an existing Paper 26.1.2 server
+- **Docker** (recommended for the Paper server) or an existing latest stable Paper server (currently 26.2)
 - **An LLM API key**: OpenAI, Anthropic, OpenRouter, or a local Ollama / OpenCode Server
 
 ### 2. Clone and Install
@@ -88,7 +88,7 @@ chmod +x scripts/download-plugins.sh
 ./scripts/download-plugins.sh
 ```
 
-This downloads the MCPQ v2.2 plugin jar into `mcpq-plugins/`.
+This downloads the MCPQ v2.2 plugin and builds the bot plugin into `mcpq-plugins/`.
 
 ### 4. Configure
 
@@ -175,8 +175,7 @@ Set `LLM_PROVIDER` and `LLM_MODEL` in your env or config.yaml to switch.
 The `docker-compose.yml` provides two services:
 
 ```bash
-# Download the MCPQ plugin first
-./scripts/download-plugins.sh
+# Download MCPQ and build the bot plugin
 
 # Start the Paper server
 docker compose up -d minecraft
@@ -315,7 +314,7 @@ minecraft-ai-bridge/
 ├── pyproject.toml                  # Package metadata & dependencies
 ├── .env.example                    # Environment variable reference
 ├── scripts/
-│   └── download-plugins.sh         # MCPQ plugin downloader
+│   └── download-plugins.sh         # MCPQ downloader and bot plugin builder
 ├── mcpq-plugins/                   # Mounted plugin directory
 ├── mcpq-config/                    # MCPQ plugin configuration
 ├── minecraft_ai_bridge/
@@ -376,17 +375,18 @@ minecraft-ai-bridge/
 - **Structure preservation**: The agent does not yet detect or respect existing player-built structures. Buildings, railroads, and NPC villages may be modified. This is a planned feature.
 - **Inventory**: Raw NBT is shown to the LLM as the primary view. The structured `InventoryManager` is available for programmatic access but the LLM prompt currently includes both structured and raw formats.
 - **Biomes**: The agent has no biome awareness — it cannot tell a forest from a desert.
-- **Combat**: Basic `/damage`-based attack only. Mob-specific strategies, armor, and weapons are not implemented.
+- **Combat**: Basic `/damage`-based attack and hotbar weapon selection are implemented. Mob-specific strategies and armor management are not implemented.
 
 ## CI/CD
 
-The project uses **GitHub Actions** for continuous integration. Every push and pull request to `master`/`main` triggers:
+The project uses **GitHub Actions** for continuous integration. Every push and pull request to `master`/`main` runs deterministic checks:
 
 | Job | What it checks |
 |-----|---------------|
 | **lint** | `ruff check` (code quality), `ruff format --check` (formatting), `mypy` (type hints) |
-| **test** | Full `pytest` suite with `--timeout=30` |
+| **test** | Deterministic pytest suite across Python 3.11, 3.12, and 3.13 |
 | **style** | `ruff check --select I` (import sorting) |
+| **integration** | Opt-in provider-backed tests; requires `RUN_LIVE_INTEGRATION=true`, Docker, and `OPENROUTER_API_KEY`; provisions the latest Paper server and bot plugin automatically |
 
 The CI badge at the top of this README shows the current status of the `master` branch.
 
@@ -400,12 +400,12 @@ pip install -e "."
 
 ## Testing
 
-The project has **182 tests** organized in two tiers:
+The project has **332 deterministic tests** plus provider-backed integration tests organized in two tiers:
 
 | Tier | Count | Description | Dependencies |
 |------|-------|-------------|--------------|
-| **Unit** | 160 | Action handlers, NBT parsing, memory, goal fallbacks, config, chat commands, inventory manager | `MockMcpqClient` (in-memory mock, no server needed) |
-| **Integration** | 22 | Full think-act-observe loop, real MCPQ + real LLM | Paper 26.1.2 + MCPQ v2.2 + OpenRouter API key |
+| **Deterministic** | 332 | Action handlers, NBT parsing, memory, goal fallbacks, config, chat commands, inventory manager, and orchestrator behavior | `MockMcpqClient` / `MockLLMClient` |
+| **Integration** | Provider-backed | Full think-act-observe loop and real MCPQ + real LLM | Latest stable Paper (currently 26.2) + MCPQ v2.2 + bot plugin + OpenRouter API key |
 
 ### Test Infrastructure
 
@@ -432,11 +432,11 @@ pytest tests/
 # Unit only
 pytest tests/ -k "not integration"
 
-# Integration only (server + API key required)
+# Integration only (Docker server + API key required)
 pytest tests/test_integration.py -v --tb=short
 ```
 
-Integration tests use real OpenRouter inference with `openai/gpt-oss-20b`. Ensure `OPENROUTER_API_KEY` is set in `.env` and the Paper server is running. Unit tests are fully self-contained and run in under 2 seconds.
+Integration tests use real OpenRouter inference with `openai/gpt-oss-20b`. Ensure `OPENROUTER_API_KEY` is set and Docker is available; the tests provision the latest Paper server and plugins. Unit tests are fully self-contained and run in under 2 seconds.
 
 ## Extending
 
@@ -454,7 +454,7 @@ See `docs/EXTENDING.md` for detailed guides on:
 | `No entity was found` for player ops | Fake player not spawned | Bridge auto-spawns one on connect; check `fp spawn` succeeded in logs |
 | MCPQ connection refused | Wrong host/port or MCPQ not loaded | Verify `mc_api.host`/`port`, check server logs for `mcpq` startup |
 | LLM returns 401 / auth error | Missing or invalid API key | Check env vars: `LLM_OPENAI_API_KEY`, `OPENROUTER_API_KEY`, etc. |
-| MC 26.1.2 client can't connect | Client/server version mismatch | Ensure client also runs 26.1.2 (the bridge uses headless MCPQ, no client needed) |
+| Paper client/server version mismatch | Version mismatch | Ensure the client and server use the same current Minecraft release (the bridge uses headless MCPQ, no client needed) |
 | LLM re-scans endlessly | World state unclear or player can't reach goal | Check player position; try a simpler goal; enable `--verbose` to see LLM reasoning |
 | Bridge container exits immediately | MCPQ not reachable | Wait for Paper to fully start; check `docker compose logs minecraft` |
 
