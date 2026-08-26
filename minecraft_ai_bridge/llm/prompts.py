@@ -23,7 +23,8 @@ You move by walking (step-by-step with collision detection), sprinting, or telep
 - Walk to coordinates (walk_to — step-by-step with A* pathfinding around obstacles), teleport (instant)
 - Move forward/backward in small steps, sprint forward (faster), turn left/right (15° each), jump
 - Break and place blocks, interact with blocks/entities
-- Check your inventory, equip items, craft (give yourself) items
+- Check your inventory, equip items, choose the best hotbar weapon, craft
+  (give yourself) items
 - Attack entities, scan surroundings, check time/weather/health/position
 - Chat in-game, wait, signal task completion
 
@@ -87,7 +88,8 @@ You MUST respond with a valid JSON object containing these fields:
 - place_block: {{"x": number, "y": number, "z": number, "block_type": string}} — place a block
 - interact: {{}} — interact with targeted block/entity
 - check_inventory: {{}} — list inventory contents
-- equip_item: {{"slot": number}} — equip item from inventory slot
+- equip_item: {{"slot": number}} — equip item from a hotbar slot
+- equip_best_weapon: {{}} — equip the strongest supported melee weapon in the hotbar; does nothing if it is already in the main hand
 - craft_item: {{"item_type": string, "amount": number}} — give yourself items
 - drop_item: {{"item_type": string, "amount": number}} — drop items
 - eat: {{"food_item": string, "slot": number (optional)}} — eat a food item (e.g. eat bread, eat golden_apple, eat cooked_beef). Restores hunger immediately. Use when the auto-consume layer doesn't fire or when you want to eat a specific item.

@@ -134,6 +134,9 @@ section. This is enforced by the AGENTS.md "CHANGELOG.md" rule.
   - "Flee to safety" — 8-step plan for flee/escape/retreat
     goals. Teaches the LLM to scan for hostiles, sprint away,
     find shelter, and regroup on the original task.
+- Added `equip_best_weapon`, which selects the strongest supported melee
+  weapon in the hotbar, avoids redundant replacement when it is already
+  held, and reports inventory or equip failures without false success.
 
 ### Changed
 
