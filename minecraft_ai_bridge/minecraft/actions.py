@@ -105,14 +105,29 @@ def select_best_weapon(items: Iterable[InventorySlot]) -> InventorySlot | None:
     """Select the strongest supported melee weapon in the hotbar.
 
     Main-inventory, armor, and offhand slots are excluded because the
-    current equip action only copies between hotbar slots.
+    current equip action only copies between hotbar slots. Damage is not
+    ranked because ``InventorySlot`` does not include max durability, so a
+    nonzero value does not identify a broken weapon.
     """
     candidates: list[tuple[int, InventorySlot]] = []
     for item in items:
-        if not 0 <= item.slot <= 8 or item.count <= 0:
+        try:
+            slot = item.slot
+            count = item.count
+            item_id = item.item_id
+        except AttributeError:
             continue
-        item_id = item.item_id.removeprefix("minecraft:").lower()
-        score = _WEAPON_SCORES.get(item_id)
+        if (
+            isinstance(slot, bool)
+            or not isinstance(slot, int)
+            or not 0 <= slot <= 8
+            or isinstance(count, bool)
+            or not isinstance(count, int)
+            or count <= 0
+            or not isinstance(item_id, str)
+        ):
+            continue
+        score = _WEAPON_SCORES.get(item_id.removeprefix("minecraft:").lower())
         if score is not None:
             candidates.append((score, item))
 
