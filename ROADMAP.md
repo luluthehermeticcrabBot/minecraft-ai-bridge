@@ -99,10 +99,11 @@ This document outlines the development priorities, completed work, and future pl
   - Monitor and maintain health
   - Find and consume food
   - Avoid dangerous situations
-- [x] **Combat system**
-  - Mob detection and avoidance
-  - Weapon selection and usage
-  - Armor management
+- [x] **Mob detection and reflex combat**
+  - Detect nearby mobs and avoid dangerous situations
+  - Attack manageable threats and flee from overwhelming threats
+- [ ] **Weapon selection and usage**
+- [ ] **Armor management**
 - [ ] **Proper crafting** (not just `/give`)
   - Recipe matching
   - Crafting table interaction
@@ -174,8 +175,8 @@ This document outlines the development priorities, completed work, and future pl
 - [ ] Configure `OPENROUTER_API_KEY` repository secret for integration tests
 - [ ] Add Python 3.11, 3.12, and 3.13 test matrix
 - [x] Health and hunger management
-- [x] Basic combat system
-- [ ] Proper crafting and smelting
+- [x] Mob detection and reflex combat
+- [ ] Weapon selection, armor management, and proper crafting/smelting
 
 ### v0.7.0
 **Target**: 1-2 months
