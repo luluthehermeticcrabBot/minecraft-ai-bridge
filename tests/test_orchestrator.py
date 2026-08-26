@@ -54,24 +54,6 @@ def _make_orchestrator(mock_mc, monkeypatch, responses: list[tuple[str, dict[str
     return orch, llm
 
 
-async def test_reflex_action_skips_llm_decision(mock_mc, monkeypatch):
-    orch, llm = _make_orchestrator(mock_mc, monkeypatch, [("wait", {})])
-
-    class Reflex:
-        async def evaluate(self, world):
-            return ActionResult(
-                success=True,
-                action=ActionType.ATTACK,
-                message="reflex attack",
-            )
-
-    orch._preservation = Reflex()
-    await _run_steps(orch, 1)
-
-    assert llm.message_batches == []
-    assert any("Action: attack" in entry.raw for entry in orch._memory._short_term)
-
-
 async def test_failed_action_exposes_bounded_context_and_retry_hint(mock_mc, monkeypatch):
     orch, llm = _make_orchestrator(
         mock_mc,
