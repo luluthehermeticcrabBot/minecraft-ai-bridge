@@ -151,6 +151,8 @@ class MockMcpqClient:
             info["health"] = self._player_nbt["Health"]
         if "foodLevel" in self._player_nbt:
             info["food"] = self._player_nbt["foodLevel"]
+        if "SelectedItemSlot" in self._player_nbt:
+            info["selected_item_slot"] = self._player_nbt["SelectedItemSlot"]
         return info
 
     async def get_hurt_by_entity(self) -> bool:

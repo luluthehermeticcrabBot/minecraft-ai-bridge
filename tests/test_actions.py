@@ -265,7 +265,24 @@ class TestEquipment:
         assert result.data["item_id"] == "minecraft:diamond_sword"
         assert result.data["slot"] == 3
         mock_mc.assert_command_contains(
-            "item replace entity AIBot hotbar.0 with entity AIBot hotbar.3"
+            "item replace entity AIBot weapon.mainhand from entity AIBot hotbar.3"
+        )
+
+    async def test_equip_best_weapon_respects_nonzero_selected_slot(self, mock_mc):
+        mock_mc.set_player_nbt("SelectedItemSlot", 3)
+        mock_mc.set_inventory(
+            [
+                {"item_id": "iron_sword", "count": 1, "slot": 3},
+                {"item_id": "diamond_sword", "count": 1, "slot": 5},
+            ]
+        )
+
+        result = await execute_action(mock_mc, ActionType.EQUIP_BEST_WEAPON, {})
+
+        assert result.success is True
+        assert result.data["already_equipped"] is False
+        mock_mc.assert_command_contains(
+            "item replace entity AIBot weapon.mainhand from entity AIBot hotbar.5"
         )
 
     async def test_equip_best_weapon_avoids_redundant_main_hand_replace(self, mock_mc):
@@ -316,6 +333,32 @@ class TestEquipment:
 
         assert result.success is False
         assert "equip command failed" in result.message
+
+    async def test_equip_best_weapon_propagates_inventory_command_failure(
+        self, mock_mc, monkeypatch
+    ):
+        async def fail_command(command):
+            return "No entity was found"
+
+        monkeypatch.setattr(mock_mc, "run_as_player", fail_command)
+
+        result = await execute_action(mock_mc, ActionType.EQUIP_BEST_WEAPON, {})
+
+        assert result.success is False
+        assert "No entity was found" in result.message
+
+    async def test_equip_best_weapon_propagates_equip_command_failure(self, mock_mc, monkeypatch):
+        async def fail_equip_command(command):
+            if "Inventory" in command:
+                return 'Inventory: [{id:"minecraft:diamond_sword",Count:1b,Slot:3b}]'
+            return "Source stack is empty"
+
+        monkeypatch.setattr(mock_mc, "run_as_player", fail_equip_command)
+
+        result = await execute_action(mock_mc, ActionType.EQUIP_BEST_WEAPON, {})
+
+        assert result.success is False
+        assert "Source stack is empty" in result.message
 
     def test_action_schema_preserves_inventory_actions(self):
         from minecraft_ai_bridge.llm.client import ACTION_TOOL

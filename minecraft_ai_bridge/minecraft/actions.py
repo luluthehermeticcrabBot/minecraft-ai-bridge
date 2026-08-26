@@ -612,6 +612,22 @@ async def _cmd(mc: McpqClient, cmd: str) -> str:
     return raw.strip()
 
 
+_COMMAND_FAILURE_MARKERS = (
+    "no entity was found",
+    "source stack is empty",
+    "unknown or incomplete command",
+    "incorrect argument",
+    "failed to",
+    "couldn't",
+    "could not",
+)
+
+
+def _command_failed(response: str) -> bool:
+    normalized = response.casefold().strip()
+    return any(marker in normalized for marker in _COMMAND_FAILURE_MARKERS)
+
+
 # ── Movement ────────────────────────────────────────────────────────────
 
 
@@ -980,21 +996,30 @@ async def _interact(mc: McpqClient, params: dict) -> ActionResult:
 
 async def _check_inventory(mc: McpqClient, params: dict) -> ActionResult:
     resp = await _cmd(mc, "data get entity @p Inventory")
+    success = not _command_failed(resp)
     return ActionResult(
-        success=True,
+        success=success,
         action=ActionType.CHECK_INVENTORY,
-        message="Retrieved inventory",
+        message="Retrieved inventory" if success else f"Inventory read failed: {resp}",
         data={"raw_inventory": resp},
     )
 
 
 async def _equip_item(mc: McpqClient, params: dict) -> ActionResult:
     slot = params.get("slot", 0)
-    resp = await _cmd(mc, f"item replace entity @p hotbar.0 with entity @p hotbar.{slot}")
+    resp = await _cmd(
+        mc,
+        f"item replace entity @p weapon.mainhand from entity @p hotbar.{slot}",
+    )
+    success = not _command_failed(resp)
     return ActionResult(
-        success=True,
+        success=success,
         action=ActionType.EQUIP_ITEM,
-        message=f"Equipped item from slot {slot}",
+        message=(
+            f"Equipped item from hotbar slot {slot}"
+            if success
+            else f"Could not equip item from hotbar slot {slot}: {resp}"
+        ),
         data={"slot": slot, "response": resp},
     )
 
@@ -1021,7 +1046,11 @@ async def _equip_best_weapon(mc: McpqClient, params: dict) -> ActionResult:
             data={"available_weapon": False},
         )
 
-    if weapon.slot == 0:
+    selected_slot = (await mc.get_player_info()).get("selected_item_slot", 0)
+    if type(selected_slot) is not int or not 0 <= selected_slot <= 8:
+        selected_slot = 0
+
+    if weapon.slot == selected_slot:
         return ActionResult(
             success=True,
             action=ActionType.EQUIP_BEST_WEAPON,

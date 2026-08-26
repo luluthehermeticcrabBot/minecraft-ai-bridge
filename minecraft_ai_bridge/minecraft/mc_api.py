@@ -176,6 +176,7 @@ class McpqClient:
             info["food"] = nbt.get("foodLevel")
             info["gamemode"] = nbt.get("playerGameType")
 
+            info["selected_item_slot"] = nbt.get("SelectedItemSlot", 0)
         return info
 
     @property
