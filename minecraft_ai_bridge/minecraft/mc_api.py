@@ -209,7 +209,7 @@ class McpqClient:
         """Teleport the configured player to an absolute position.
 
         Uses ``/tp`` command because MCPQ's ``player.teleport(Vec3)`` gRPC
-        call silently fails on Paper 26.1.2 (reports success but doesn't
+        call silently fails on Paper 26.x (reports success but doesn't
         actually move the player).
         """
         await self.run_as_player(f"tp @p {x} {y} {z}")
@@ -340,7 +340,7 @@ class McpqClient:
         """Query the current in-game time.
 
         Uses ``time query day`` instead of the legacy ``time query daytime``
-        which is broken on Paper 26.1.2 (throws CommandException).
+        which is broken on Paper 26.x (throws CommandException).
         The result gives total in-game ticks (days × 24000 + daytime).
         """
         return await self.run_command_blocking("time query day")

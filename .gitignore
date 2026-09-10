@@ -30,5 +30,6 @@ mcpq-plugins/*.jar
 # Config
 config.local.yaml
 
-# Java / Maven build artifacts
+# Java / Gradle build artifacts
 bot-plugin/target/
+bot-plugin/.gradle/

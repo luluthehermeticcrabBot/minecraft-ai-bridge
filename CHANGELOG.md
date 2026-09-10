@@ -139,6 +139,7 @@ section. This is enforced by the AGENTS.md "CHANGELOG.md" rule.
   held, and reports inventory or equip failures without false success.
 
 ### Changed
+- Docker uses a pinned Paper 26.2 build 123 with the pinned Java 25 server image, and the bot plugin uses the matching pinned Paperweight dev bundle. The plugin setup script builds and copies it automatically; upgrade the Paper version/build and image digest together.
 
 - `bridge/orchestrator.py` calls `self._preservation.evaluate(world)`
   after `_observe()` and before the LLM decides. If the layer
@@ -164,6 +165,9 @@ section. This is enforced by the AGENTS.md "CHANGELOG.md" rule.
   Failed LLM-selected actions include an explicit recovery hint and receive
   at most one guarded retry decision on the next turn; identical retries
   are rejected without repeating side effects.
+- Live integration CI is now opt-in via the `RUN_LIVE_INTEGRATION`
+  repository variable and requires a configured Paper/MCPQ environment plus
+  `OPENROUTER_API_KEY`; deterministic checks remain mandatory on every PR.
 
 ### Fixed
 
@@ -173,6 +177,9 @@ section. This is enforced by the AGENTS.md "CHANGELOG.md" rule.
   This caused the agent to charge a nearby mob because it tripped
   on a cactus — fixing this required a damage-source check
   (`LastHurtByEntity`) and a flee path for high-threat scenarios.
+- `equip_best_weapon` now skips malformed inventory records instead of
+  raising during weapon selection; nonzero item damage remains metadata-only
+  until max-durability data is available.
 
 ### Removed
 

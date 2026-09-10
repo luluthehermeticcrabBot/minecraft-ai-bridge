@@ -10,7 +10,7 @@ This document outlines the development priorities, completed work, and future pl
 ## 🎯 Current Status
 
 **Version**: 0.5.1 (unreleased)
-**Test Coverage**: 319 deterministic tests passing; integration tests require Paper/MCPQ and an LLM provider
+**Test Coverage**: 333 deterministic tests passing; integration tests require pinned Paper 26.2 build 123/MCPQ and an LLM provider
 **Overall Health**: ✅ Core behavior stable; CI and release hardening in progress
 
 ---
@@ -53,8 +53,8 @@ This document outlines the development priorities, completed work, and future pl
 - [x] I28: Structure respect rules (prompt guidance to not build over existing builds)
 
 ### Testing
-- [x] 319 deterministic tests passing (MockMcpqClient-based, no server needed)
-- [ ] Integration tests require Paper/MCPQ and an LLM provider
+- [x] 333 deterministic tests passing (MockMcpqClient-based, no server needed)
+- [x] Integration tests require Docker-provisioned pinned Paper 26.2 build 123/MCPQ and an LLM provider
 - [x] Goal-verification helpers (`actions_taken()`, `position_reached()`)
 
 ### P2: Observer and Prompt Reliability (Complete)
@@ -70,14 +70,15 @@ This document outlines the development priorities, completed work, and future pl
 ### P1: Release Readiness (Current)
 
 #### CI/CD Setup
-- [ ] **Set up GitHub Actions secrets** for integration tests
+- [x] **Set up GitHub Actions secrets** for integration tests
   - `OPENROUTER_API_KEY` for LLM inference tests
   - Consider `MISTRAL_API_KEY` as alternative
 - [x] Run deterministic unit tests on all pushes and pull requests
-- [x] Gate integration tests on the configured provider secret
+- [x] Gate live integration tests on `RUN_LIVE_INTEGRATION=true` plus the provider secret
 - [x] Run Ruff linting and formatting checks
+- [x] Provision Paper 26.2 build 123/MCPQ/bot-plugin infrastructure for live CI integration tests
 - [ ] Re-enable mypy after reconciling strict SDK types
-- [ ] **Add test matrix** for Python versions (3.11, 3.12, 3.13)
+- [x] **Test matrix** for Python versions (3.11, 3.12, 3.13)
 
 #### Code Improvements
 - [x] Fix auto-step logic to not step over hazards
@@ -174,8 +175,8 @@ This document outlines the development priorities, completed work, and future pl
 **Focus**: CI/CD matrix and remaining survival basics
 
 - [x] GitHub Actions CI with deterministic unit tests
-- [ ] Configure `OPENROUTER_API_KEY` repository secret for integration tests
-- [ ] Add Python 3.11, 3.12, and 3.13 test matrix
+- [x] Configure the opt-in `OPENROUTER_API_KEY` repository secret for integration tests
+- [x] Add Python 3.11, 3.12, and 3.13 test matrix
 - [x] Health and hunger management
 - [x] Mob detection and reflex combat
 - [ ] Weapon selection, armor management, and proper crafting/smelting
@@ -210,14 +211,13 @@ This document outlines the development priorities, completed work, and future pl
 - **Coverage**: Action handlers, NBT parsing, memory, goals, config, inventory, chat commands, pathfinding, and orchestrator recovery
 
 ### Integration Tests
-- **Run in CI**: ⚠️ Only with `OPENROUTER_API_KEY`
-- **Dependencies**: Paper server + MCPQ plugin + LLM provider
-- **Coverage**: Full think-act-observe loop and provider-backed inference
+- **Run in CI**: ⚠️ Only when `RUN_LIVE_INTEGRATION=true`
+- **Dependencies**: Docker, pinned Paper 26.2 build 123 + MCPQ + bot plugin, and LLM provider
 
 ### Manual Testing
 - **Local Docker setup**: Required for full end-to-end testing
 - **LLM providers**: Test with OpenAI, Anthropic, Ollama, OpenRouter, OpenCode Server
-- **Minecraft versions**: Test with Paper 26.1.2
+- **Minecraft versions**: Test against pinned Paper 26.2 build 123; update the version/build and Docker image digest together.
 ---
 
 

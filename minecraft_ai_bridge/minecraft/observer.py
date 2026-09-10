@@ -63,7 +63,7 @@ class Observer:
 
     def __init__(self, mc: McpqClient) -> None:
         self._mc = mc
-        self._biome_cache: dict[tuple[int, int], str] = {}
+        self._biome_cache: dict[tuple[str, int, int, int], str] = {}
 
     async def observe(self) -> WorldState:
         """Gather a full state snapshot.  Returns a ``WorldState``."""
@@ -119,8 +119,12 @@ class Observer:
 
         # Best-effort authoritative biome detection, cached per chunk.
         if state.position:
+            player_info = await self._mc.get_player_info()
+            dimension = str(player_info.get("world") or "unknown")
             chunk_key = (
+                dimension,
                 math.floor(state.position[0] / 16),
+                math.floor(state.position[1] / 16),
                 math.floor(state.position[2] / 16),
             )
             if chunk_key in self._biome_cache:

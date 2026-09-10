@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 from mcpq.nbt import NbtInt
 
@@ -252,6 +254,22 @@ class TestEquipment:
         assert selected is not None
         assert selected.slot == 2
 
+    def test_select_best_weapon_skips_malformed_inventory_entries(self):
+        malformed = SimpleNamespace(item_id=None, count="unknown", slot="hotbar")
+        valid = InventorySlot(item_id="minecraft:iron_sword", count=1, slot=2)
+
+        selected = select_best_weapon([malformed, valid])
+
+        assert selected == valid
+
+    def test_select_best_weapon_ignores_damage_without_durability_metadata(self):
+        worn_diamond = InventorySlot(item_id="minecraft:diamond_sword", count=1, slot=2, damage=100)
+        fresh_iron = InventorySlot(item_id="minecraft:iron_sword", count=1, slot=0, damage=0)
+
+        selected = select_best_weapon([worn_diamond, fresh_iron])
+
+        assert selected == worn_diamond
+
     async def test_equip_best_weapon_moves_best_hotbar_item_to_main_hand(self, mock_mc):
         mock_mc.set_inventory(
             [
@@ -404,6 +422,12 @@ class TestInventory:
     async def test_equip_item(self, mock_mc):
         result = await execute_action(mock_mc, ActionType.EQUIP_ITEM, {"slot": 0})
         assert result.success is True
+
+    async def test_equip_item_rejects_invalid_slot(self, mock_mc):
+        for slot in (-1, 9, "1", True):
+            result = await execute_action(mock_mc, ActionType.EQUIP_ITEM, {"slot": slot})
+            assert result.success is False
+            assert "slot" in result.message.lower()
 
     async def test_craft_item(self, mock_mc):
         result = await execute_action(

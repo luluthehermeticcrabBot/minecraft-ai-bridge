@@ -105,14 +105,29 @@ def select_best_weapon(items: Iterable[InventorySlot]) -> InventorySlot | None:
     """Select the strongest supported melee weapon in the hotbar.
 
     Main-inventory, armor, and offhand slots are excluded because the
-    current equip action only copies between hotbar slots.
+    current equip action only copies between hotbar slots. Damage is not
+    ranked because ``InventorySlot`` does not include max durability, so a
+    nonzero value does not identify a broken weapon.
     """
     candidates: list[tuple[int, InventorySlot]] = []
     for item in items:
-        if not 0 <= item.slot <= 8 or item.count <= 0:
+        try:
+            slot = item.slot
+            count = item.count
+            item_id = item.item_id
+        except AttributeError:
             continue
-        item_id = item.item_id.removeprefix("minecraft:").lower()
-        score = _WEAPON_SCORES.get(item_id)
+        if (
+            isinstance(slot, bool)
+            or not isinstance(slot, int)
+            or not 0 <= slot <= 8
+            or isinstance(count, bool)
+            or not isinstance(count, int)
+            or count <= 0
+            or not isinstance(item_id, str)
+        ):
+            continue
+        score = _WEAPON_SCORES.get(item_id.removeprefix("minecraft:").lower())
         if score is not None:
             candidates.append((score, item))
 
@@ -1007,6 +1022,13 @@ async def _check_inventory(mc: McpqClient, params: dict) -> ActionResult:
 
 async def _equip_item(mc: McpqClient, params: dict) -> ActionResult:
     slot = params.get("slot", 0)
+    if isinstance(slot, bool) or not isinstance(slot, int) or not 0 <= slot <= 8:
+        return ActionResult(
+            success=False,
+            action=ActionType.EQUIP_ITEM,
+            message=f"Invalid hotbar slot {slot!r}; expected an integer from 0 to 8",
+            data={"slot": slot},
+        )
     resp = await _cmd(
         mc,
         f"item replace entity @p weapon.mainhand from entity @p hotbar.{slot}",
@@ -1598,7 +1620,7 @@ async def _scan_entities(mc: McpqClient, params: dict) -> ActionResult:
 async def _attack(mc: McpqClient, params: dict) -> ActionResult:
     """Attack a target entity using ``/damage``.
 
-    Paper 26.1.x broke ``execute as @p at @p run attack`` (throws
+    Paper 26.x broke ``execute as @p at @p run attack`` (throws
     CommandException), so this action uses the ``/damage`` command
     instead, which has been available since MC 1.20.5.
 

@@ -298,7 +298,7 @@ class MockMcpqClient:
         return self._players
 
     async def get_server_version(self) -> str:
-        return "Paper 26.1.2"
+        return "Paper 26.2"
 
 
 # ── Mock Observer ────────────────────────────────────────────────────────
