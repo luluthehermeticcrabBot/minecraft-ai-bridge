@@ -10,7 +10,7 @@ This document outlines the development priorities, completed work, and future pl
 ## 🎯 Current Status
 
 **Version**: 0.5.1 (unreleased)
-**Test Coverage**: 330 deterministic tests passing; integration tests require Paper/MCPQ and an LLM provider
+**Test Coverage**: 333 deterministic tests passing; integration tests require pinned Paper 26.2 build 123/MCPQ and an LLM provider
 **Overall Health**: ✅ Core behavior stable; CI and release hardening in progress
 
 ---
