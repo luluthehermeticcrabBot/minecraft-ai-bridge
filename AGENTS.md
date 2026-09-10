@@ -10,7 +10,7 @@
 - **Async**: asyncio throughout
 - **Config**: pydantic-settings (YAML + env vars)
 - **Package**: `minecraft-ai-bridge` (PyPI-style, installable with pip)
-- **Server**: Paper 1.21.4 + MCPQ plugin v2.2 + fakeplayer plugin
+- **Server**: Paper 26.2 build 123 + MCPQ plugin v2.2 + custom bot plugin
 - **Docker**: itzg/minecraft-server image with plugins mounted
 
 ## What's Built (Complete)
@@ -44,7 +44,7 @@
 
 ### Infrastructure
 - `Dockerfile` — `python:3.13-slim`, pip installs the package
-- `docker-compose.yml` — Paper server (itzg/minecraft-server:latest with `VERSION=LATEST`, currently Paper 26.2) + bridge service. MCPQ on port 1789. Custom bot plugin mount. OPS env var with operator usernames.
+- `docker-compose.yml` — Paper server (pinned itzg Java 25 image with Paper 26.2 build 123) + bridge service. MCPQ on port 1789. Custom bot plugin mount. OPS env var with operator usernames.
 - `scripts/download-plugins.sh` — downloads MCPQ v2.2 jar and builds the bot plugin
 - `mcpq-config/config.yml` — MCPQ bound to `0.0.0.0:1789`
 - `mcpq-plugins/` — mounted plugin directory
@@ -79,7 +79,7 @@ examples and the conventions block at the top.
 
 ### Critical
 - **Model compatibility**: Some OpenRouter models (esp. newer ones like `gpt-5-nano`) may not support tool calling. Test with models known to work: `openai/gpt-4o-mini`, `openai/gpt-4o`, `anthropic/claude-sonnet-4`.
-- **No entity for MCPQ**: If the fakeplayer isn't spawned on connect, MCPQ player ops fail. The orchestrator has retry logic but it's not 100% reliable.
+- **No entity for MCPQ**: If the custom bot entity isn't spawned on connect, MCPQ player ops fail. The orchestrator has retry logic but it's not 100% reliable.
 
 ### Performance
 - **Scanner limited to radius 16**: The `scan` action caps at r=16 to avoid MCPQ rate limiting. For scanning large areas, needs chunk-based iteration.
@@ -87,9 +87,9 @@ examples and the conventions block at the top.
 - **Inventory tracking**: Inventory parsed into structured `InventorySlot` objects; observer grabs via `/data get entity @p Inventory` and inventory manager tracks slots.
 
 ### Paper / MCPQ
-- **Paper latest stable** (currently 26.2 build #119; Mojang YY numbering): MCPQ v2.2 works. Docker resolves `VERSION=LATEST`; Paperweight and CI resolve the matching latest stable version from Paper's Fill API.
+- **Paper pin**: Paper 26.2 build 123 with MCPQ v2.2. Docker pins the Java 25 server image by digest; update the Paper version/build and image digest together.
 - **Bot plugin**: Custom `mc-bot-plugin-1.0.0.jar` replaces tanyaofei/fakeplayer. Built in `bot-plugin/` with Gradle + paperweight-userdev (Java 25). Provides `/botsummon <name>` command that creates a ServerPlayer entity MCPQ can detect.
-- **Plugin version pinning**: MCPQ jar is downloaded from GitHub releases. The bot plugin version is fixed, but its Paper dev bundle is resolved dynamically at build time.
+- **Plugin version pinning**: MCPQ jar is downloaded from GitHub releases. The bot plugin and Paperweight dev bundle are pinned; update them deliberately together.
 - **Known Paper 26.x issues**:
   - `time query daytime` throws CommandException — use `time query day` instead (fixed in bridge code)
   - `setblock` commands via MCPQ may have array-related issues (mitigated in MCPQ client)
@@ -100,7 +100,7 @@ examples and the conventions block at the top.
 - **config.yaml volume mount**: Mounted read-only at `/app/config.yaml`. Changes require `docker compose restart bridge`.
 
 ### Code Quality
-- **Tests**: 182 tests total (160 unit + 22 integration). Unit tests use `MockMcpqClient` for deterministic MCPQ simulation. Integration tests use a real MCPQ server + real LLM (OpenRouter `openai/gpt-oss-20b`) for end-to-end validation. All tests run against the latest stable Paper release (currently 26.2). Run with `pytest tests/`.
+- **Tests**: 333 deterministic tests plus 12 integration tests. Unit tests use `MockMcpqClient` for deterministic MCPQ simulation. Integration tests use a real MCPQ server + real LLM (OpenRouter `openai/gpt-oss-20b`) for end-to-end validation. The stack uses pinned Paper 26.2 build 123. Run with `pytest tests/`.
 - **No type checking in CI**: `pyproject.toml` has dev deps for mypy/ruff but no CI setup.
 - **gRPC stubs are synchronous**: MCPQ generated stubs block; dispatched via `asyncio.to_thread`. Not ideal but works.
 - **RCON client is unmaintained**: Since the MCPQ migration, `rcon.py` isn't tested. Consider removing or marking deprecated.
@@ -110,8 +110,8 @@ examples and the conventions block at the top.
 ### Why MCPQ over RCON?
 MCPQ gives structured world manipulation (setBlock, getBlock, getPlayerPos) that RCON can't do. RCON only allows running commands and parsing string output.
 
-### Why fakeplayer over pyCraft?
-pyCraft maxes at Minecraft 1.18.1 (protocol 754) and is unmaintained. fakeplayer creates a ServerPlayer server-side only — no network protocol needed.
+### Why the custom bot plugin over pyCraft?
+pyCraft maxes at Minecraft 1.18.1 (protocol 754) and is unmaintained. The custom bot plugin creates a ServerPlayer server-side only — no network protocol needed.
 
 ### Why asyncio?
 The bridge is I/O-bound (LLM API calls, MCPQ gRPC, rate-limit delays). asyncio allows concurrent observation queries without thread overhead.
@@ -195,9 +195,9 @@ The 0.5.0 release completed the testing milestone:
 
 - **Python**: 3.11+ required (built on 3.13)
 - **OS**: Linux (Docker: python:3.13-slim)
-- **Paper**: 1.21.4 via itzg/minecraft-server
+- **Paper**: 26.2 build 123 via pinned itzg Java 25 image
 - **MCPQ plugin**: v2.2
-- **fakeplayer**: v0.3.19 + CommandAPI 9.7.0
+- **Custom bot plugin**: v1.0.0, built from `bot-plugin/` with Java 25 and Paperweight
 - **Docker compose**: v2 format
 
 ## Test Infrastructure

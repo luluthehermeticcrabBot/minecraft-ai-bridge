@@ -12,7 +12,7 @@ This guide covers all installation methods and configuration options for the Min
 
 ## Method 1: Docker (Recommended)
 
-This starts a complete latest stable Paper server (currently Paper 26.2) with MCPQ and the built-in bot plugin, then runs the bridge.
+This starts a pinned Paper 26.2 build 123 server with MCPQ and the built-in bot plugin, then runs the bridge.
 
 ### Step 1: Clone and Download
 
@@ -49,7 +49,7 @@ environment:
   OPS: "AIBot,TestBot"
 ```
 
-Add or remove usernames as needed for your fakeplayer configuration.
+Add or remove usernames as needed for the included bot plugin configuration.
 
 ### Step 4: Start the Server
 
@@ -128,7 +128,7 @@ cp config.yaml config.yaml
 
 ### Step 3: Have a Paper Server with MCPQ
 
-You need the latest stable Paper server (currently Paper 26.2) with:
+You need Paper 26.2 build 123 with:
 1. [MCPQ plugin](https://github.com/mcpq/mcpq-plugin) v2.2+
 2. The included bot plugin (`bot-plugin/`) — provides `/botsummon <name>` for player entity creation
 3. MCPQ configured to listen on `0.0.0.0:1789`
@@ -160,9 +160,9 @@ minecraft-ai-bridge --list-providers
 
 If not using Docker, here's how to set up the server manually.
 
-### 1. Install the latest stable Paper
+### 1. Install pinned Paper 26.2 build 123
 
-Download the latest stable Paper build from the [official Paper downloads page](https://papermc.io/downloads/paper). It currently lists Paper 26.2 build #119.
+Download Paper 26.2 build 123 from the [official Paper downloads page](https://papermc.io/downloads/paper), or use the included plugin/Compose pin.
 
 ```bash
 # First run to generate files
@@ -342,7 +342,7 @@ docker compose logs bridge
 
 ## Running Tests
 
-The project has **182 tests** (160 unit + 22 integration):
+The project has **332 deterministic tests** plus provider-backed integration tests:
 
 ```bash
 # Install dev dependencies

@@ -423,6 +423,12 @@ class TestInventory:
         result = await execute_action(mock_mc, ActionType.EQUIP_ITEM, {"slot": 0})
         assert result.success is True
 
+    async def test_equip_item_rejects_invalid_slot(self, mock_mc):
+        for slot in (-1, 9, "1", True):
+            result = await execute_action(mock_mc, ActionType.EQUIP_ITEM, {"slot": slot})
+            assert result.success is False
+            assert "slot" in result.message.lower()
+
     async def test_craft_item(self, mock_mc):
         result = await execute_action(
             mock_mc, ActionType.CRAFT_ITEM, {"item_type": "crafting_table", "amount": 1}

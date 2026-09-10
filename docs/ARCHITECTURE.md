@@ -309,9 +309,9 @@ RCON is text-based and limited to running commands and reading string output. MC
 - **Structured data**: Protobuf instead of parsing command output
 - **No client needed**: The plugin runs server-side
 
-### Why fakeplayer + MCPQ (not a full bot)?
+### Why the included bot plugin + MCPQ (not a full bot)?
 
-MCPQ needs a `ServerPlayer` entity to control. The `tanyaofei/minecraft-fakeplayer` plugin creates a lightweight fake player entity that exists server-side only — no game client connection needed. This is more reliable and simpler than maintaining a full client bot (like pyCraft).
+MCPQ needs a `ServerPlayer` entity to control. The included `mc-bot-plugin` creates a lightweight server-side player entity — no game client connection needed. This is more reliable and simpler than maintaining a full client bot (like pyCraft).
 
 ### Why asyncio?
 

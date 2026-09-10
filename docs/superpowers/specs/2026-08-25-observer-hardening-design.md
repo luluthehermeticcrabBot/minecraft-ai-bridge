@@ -73,9 +73,9 @@ Existing generic `_parse_nbt_value` behavior remains compatible for position/tim
 3. Return `unknown` when all probes fail or the command is unavailable.
 4. Do not infer biome from surface or neighboring blocks.
 
-`Observer` caches biome results by `(chunk_x, chunk_z)` where chunk coordinates are calculated from block coordinates using Minecraft's 16-block chunks. Both known values and `unknown` are cached. A repeated observation in the same chunk performs no new biome probes; entering a new chunk performs at most one bounded probe sequence.
+`Observer` caches biome results by `(dimension, chunk_x, section_y, chunk_z)` where coordinates are calculated from block coordinates using Minecraft's 16-block chunks/sections. Both known values and `unknown` are cached. A repeated observation in the same dimension and section performs no new biome probes; entering a new dimension or vertical section performs at most one bounded probe sequence.
 
-`get_biome` returns `unknown` when authoritative probing cannot identify the biome. `Observer` stores that value and caches it. If the client call itself raises before returning a result, `Observer` also records `unknown` for the chunk rather than leaving a stale or heuristic value.
+`get_biome` returns `unknown` when authoritative probing cannot identify the biome. `Observer` stores that value and caches it. If the client call itself raises before returning a result, `Observer` also records `unknown` for the dimension/section rather than leaving a stale or heuristic value.
 
 The cache is instance-local and naturally resets for a new observer/session. Existing best-effort behavior remains: a biome failure does not fail the complete observation.
 

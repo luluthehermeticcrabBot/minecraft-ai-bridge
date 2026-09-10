@@ -139,7 +139,7 @@ section. This is enforced by the AGENTS.md "CHANGELOG.md" rule.
   held, and reports inventory or equip failures without false success.
 
 ### Changed
-- Docker now uses `VERSION=LATEST`, so the server tracks the latest stable Paper release on restart. The bot plugin build resolves the latest stable Paper version from Paper's Fill API and uses the matching paperweight-userdev dev bundle and Java 25; the plugin setup script builds and copies it automatically. The opt-in CI integration job now provisions that same latest Paper/MCPQ/plugin stack before running tests.
+- Docker uses a pinned Paper 26.2 build 123 with the pinned Java 25 server image, and the bot plugin uses the matching pinned Paperweight dev bundle. The plugin setup script builds and copies it automatically; upgrade the Paper version/build and image digest together.
 
 - `bridge/orchestrator.py` calls `self._preservation.evaluate(world)`
   after `_observe()` and before the LLM decides. If the layer

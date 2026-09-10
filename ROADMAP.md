@@ -217,7 +217,7 @@ This document outlines the development priorities, completed work, and future pl
 ### Manual Testing
 - **Local Docker setup**: Required for full end-to-end testing
 - **LLM providers**: Test with OpenAI, Anthropic, Ollama, OpenRouter, OpenCode Server
-- **Minecraft versions**: Test with the latest stable Paper release (currently 26.2)
+- **Minecraft versions**: Test against pinned Paper 26.2 build 123; update the version/build and Docker image digest together.
 ---
 
 

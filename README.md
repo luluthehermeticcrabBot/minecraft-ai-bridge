@@ -62,7 +62,7 @@ The key difference from traditional RCON-based bridges: **MCPQ gives the agent d
 ### 1. Prerequisites
 
 - **Python 3.11+**
-- **Docker** (recommended for the Paper server) or an existing latest stable Paper server (currently 26.2)
+- **Docker** (recommended for the Paper server) or an existing Paper 26.2 build 123 server
 - **An LLM API key**: OpenAI, Anthropic, OpenRouter, or a local Ollama / OpenCode Server
 
 ### 2. Clone and Install
@@ -405,7 +405,7 @@ The project has **332 deterministic tests** plus provider-backed integration tes
 | Tier | Count | Description | Dependencies |
 |------|-------|-------------|--------------|
 | **Deterministic** | 332 | Action handlers, NBT parsing, memory, goal fallbacks, config, chat commands, inventory manager, and orchestrator behavior | `MockMcpqClient` / `MockLLMClient` |
-| **Integration** | Provider-backed | Full think-act-observe loop and real MCPQ + real LLM | Latest stable Paper (currently 26.2) + MCPQ v2.2 + bot plugin + OpenRouter API key |
+| **Integration** | Provider-backed | Full think-act-observe loop and real MCPQ + real LLM | Paper 26.2 build 123 + MCPQ v2.2 + bot plugin + OpenRouter API key |
 
 ### Test Infrastructure
 

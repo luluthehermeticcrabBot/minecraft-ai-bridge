@@ -1022,6 +1022,13 @@ async def _check_inventory(mc: McpqClient, params: dict) -> ActionResult:
 
 async def _equip_item(mc: McpqClient, params: dict) -> ActionResult:
     slot = params.get("slot", 0)
+    if isinstance(slot, bool) or not isinstance(slot, int) or not 0 <= slot <= 8:
+        return ActionResult(
+            success=False,
+            action=ActionType.EQUIP_ITEM,
+            message=f"Invalid hotbar slot {slot!r}; expected an integer from 0 to 8",
+            data={"slot": slot},
+        )
     resp = await _cmd(
         mc,
         f"item replace entity @p weapon.mainhand from entity @p hotbar.{slot}",
