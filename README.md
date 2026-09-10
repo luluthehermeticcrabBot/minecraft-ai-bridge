@@ -374,7 +374,7 @@ minecraft-ai-bridge/
 - **Crafting**: Uses `/give` (creative/OP mode). Proper survival crafting with recipe matching is planned.
 - **Structure preservation**: The agent does not yet detect or respect existing player-built structures. Buildings, railroads, and NPC villages may be modified. This is a planned feature.
 - **Inventory**: Raw NBT is shown to the LLM as the primary view. The structured `InventoryManager` is available for programmatic access but the LLM prompt currently includes both structured and raw formats.
-- **Biomes**: The agent has no biome awareness — it cannot tell a forest from a desert.
+- **Biomes**: The observer reports the current biome using authoritative server data; biome-specific strategies are not yet implemented.
 - **Combat**: Basic `/damage`-based attack and hotbar weapon selection are implemented. Mob-specific strategies and armor management are not implemented.
 
 ## CI/CD
@@ -383,10 +383,10 @@ The project uses **GitHub Actions** for continuous integration. Every push and p
 
 | Job | What it checks |
 |-----|---------------|
-| **lint** | `ruff check` (code quality), `ruff format --check` (formatting), `mypy` (type hints) |
+| **lint** | `ruff check` (code quality), `ruff format --check` (formatting); mypy is available as an opt-in check with `MYPY_ENABLED=true` |
 | **test** | Deterministic pytest suite across Python 3.11, 3.12, and 3.13 |
 | **style** | `ruff check --select I` (import sorting) |
-| **integration** | Opt-in provider-backed tests; requires `RUN_LIVE_INTEGRATION=true`, Docker, and `OPENROUTER_API_KEY`; provisions the latest Paper server and bot plugin automatically |
+| **integration** | Opt-in provider-backed tests; requires `RUN_LIVE_INTEGRATION=true`, Docker, and `OPENROUTER_API_KEY`; provisions pinned Paper 26.2 build 123 and the bot plugin automatically |
 
 The CI badge at the top of this README shows the current status of the `master` branch.
 
@@ -400,11 +400,11 @@ pip install -e "."
 
 ## Testing
 
-The project has **332 deterministic tests** plus provider-backed integration tests organized in two tiers:
+The project has **333 deterministic tests** plus provider-backed integration tests organized in two tiers:
 
 | Tier | Count | Description | Dependencies |
 |------|-------|-------------|--------------|
-| **Deterministic** | 332 | Action handlers, NBT parsing, memory, goal fallbacks, config, chat commands, inventory manager, and orchestrator behavior | `MockMcpqClient` / `MockLLMClient` |
+| **Deterministic** | 333 | Action handlers, NBT parsing, memory, goal fallbacks, config, chat commands, inventory manager, observer, and orchestrator behavior | `MockMcpqClient` / `MockLLMClient` |
 | **Integration** | Provider-backed | Full think-act-observe loop and real MCPQ + real LLM | Paper 26.2 build 123 + MCPQ v2.2 + bot plugin + OpenRouter API key |
 
 ### Test Infrastructure
@@ -436,7 +436,7 @@ pytest tests/ -k "not integration"
 pytest tests/test_integration.py -v --tb=short
 ```
 
-Integration tests use real OpenRouter inference with `openai/gpt-oss-20b`. Ensure `OPENROUTER_API_KEY` is set and Docker is available; the tests provision the latest Paper server and plugins. Unit tests are fully self-contained and run in under 2 seconds.
+Integration tests use real OpenRouter inference with `openai/gpt-oss-20b`. Ensure `OPENROUTER_API_KEY` is set and Docker is available; the tests provision pinned Paper 26.2 build 123 and the plugins. Unit tests are fully self-contained.
 
 ## Extending
 

@@ -185,7 +185,7 @@ ACTION_TOOL = {
 
 The main agent loop. On construction it creates LLM client, MCPQ client, observer, memory, and goal manager. The `run()` method:
 
-1. **Connects** to MCPQ, spawns a fake player if needed, teleports to safe coordinates
+1. **Connects** to MCPQ, spawns the bot entity if needed, teleports to safe coordinates
 2. **Decomposes** the goal into sub-goals via the LLM (with fallback plans)
 3. **Loops** through think-act-observe until the goal is complete
 

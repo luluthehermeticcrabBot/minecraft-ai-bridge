@@ -317,7 +317,7 @@ nc -zv <server-ip> 1789
 # Should show: Connection succeeded
 ```
 
-### Check the fake player is spawned
+### Check the bot entity is spawned
 
 ```bash
 # In the server console
@@ -336,13 +336,13 @@ minecraft-ai-bridge --verbose "Say hello to the world"
 
 ```bash
 docker compose logs bridge
-# Look for: "Player 'AIBot' already present" or "spawning fake player"
+# Look for: "Player 'AIBot' already present" or bot-entity spawn messages
 # And: "LLM decision: chat" with the actual reasoning
 ```
 
 ## Running Tests
 
-The project has **332 deterministic tests** plus provider-backed integration tests:
+The project has **333 deterministic tests** plus provider-backed integration tests:
 
 ```bash
 # Install dev dependencies
