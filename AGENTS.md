@@ -28,7 +28,7 @@
 - `models.py` — `LLMResponse`, `Message`, `Role` pydantic models
 
 ### Bridge Layer (`minecraft_ai_bridge/bridge/`)
-- `orchestrator.py` — `Orchestrator` class with `run()` and `_step()` think-act-observe loop. Auto-spawns fake player on connect, teleports to safe location.
+- `orchestrator.py` — `Orchestrator` class with `run()` and `_step()` think-act-observe loop. Auto-spawns the bot entity on connect, teleports to safe location.
 - `goal_manager.py` — `GoalNode` tree, LLM-based decomposition, fallback plans for common goals (build, mine, farm, workshop, explore, generic). Mining pattern uses `\bore\b` to avoid matching "Explore" via substring.
 - `memory.py` — `AgentMemory` with short-term (rolling deque) and long-term (facts set) memory
 - `chat_commands.py` — Incoming chat command parser (`!stop`, `!status`, `!follow`) for live agent control
@@ -88,7 +88,7 @@ examples and the conventions block at the top.
 
 ### Paper / MCPQ
 - **Paper pin**: Paper 26.2 build 123 with MCPQ v2.2. Docker pins the Java 25 server image by digest; update the Paper version/build and image digest together.
-- **Bot plugin**: Custom `mc-bot-plugin-1.0.0.jar` replaces tanyaofei/fakeplayer. Built in `bot-plugin/` with Gradle + paperweight-userdev (Java 25). Provides `/botsummon <name>` command that creates a ServerPlayer entity MCPQ can detect.
+- **Bot plugin**: Custom `mc-bot-plugin-1.0.0.jar` provides the bot entity. Built in `bot-plugin/` with Gradle + paperweight-userdev (Java 25). Provides `/botsummon <name>` command that creates a ServerPlayer entity MCPQ can detect.
 - **Plugin version pinning**: MCPQ jar is downloaded from GitHub releases. The bot plugin and Paperweight dev bundle are pinned; update them deliberately together.
 - **Known Paper 26.x issues**:
   - `time query daytime` throws CommandException — use `time query day` instead (fixed in bridge code)
@@ -101,7 +101,7 @@ examples and the conventions block at the top.
 
 ### Code Quality
 - **Tests**: 333 deterministic tests plus 12 integration tests. Unit tests use `MockMcpqClient` for deterministic MCPQ simulation. Integration tests use a real MCPQ server + real LLM (OpenRouter `openai/gpt-oss-20b`) for end-to-end validation. The stack uses pinned Paper 26.2 build 123. Run with `pytest tests/`.
-- **No type checking in CI**: `pyproject.toml` has dev deps for mypy/ruff but no CI setup.
+- **Mypy**: The CI job is wired but skipped by default; enable it with the `MYPY_ENABLED` repository variable after SDK typing issues are resolved.
 - **gRPC stubs are synchronous**: MCPQ generated stubs block; dispatched via `asyncio.to_thread`. Not ideal but works.
 - **RCON client is unmaintained**: Since the MCPQ migration, `rcon.py` isn't tested. Consider removing or marking deprecated.
 
