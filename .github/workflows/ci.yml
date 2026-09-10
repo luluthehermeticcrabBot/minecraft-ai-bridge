@@ -52,7 +52,7 @@ jobs:
 
 
   bot-plugin:
-    name: Bot Plugin (latest Paper)
+    name: Bot Plugin (pinned Paper 26.2 build 123)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -63,7 +63,7 @@ jobs:
           distribution: temurin
           java-version: "25"
 
-      - name: Build bot plugin against latest Paper
+      - name: Build bot plugin against pinned Paper 26.2 build 123
         working-directory: bot-plugin
         run: ./gradlew --no-daemon clean build
 
@@ -98,7 +98,7 @@ jobs:
   integration:
     name: Integration Tests (opt-in)
     runs-on: ubuntu-latest
-    # This job provisions the latest stable Paper server from docker-compose.yml.
+    # This job provisions the pinned Paper 26.2 build 123 stack from docker-compose.yml.
     # Set RUN_LIVE_INTEGRATION=true only when provider-backed tests are desired.
     if: ${{ vars.RUN_LIVE_INTEGRATION == 'true' }}
     env:
@@ -138,10 +138,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
-      - name: Prepare latest Paper server and plugins
+      - name: Prepare pinned Paper server and plugins
         run: ./scripts/download-plugins.sh
 
-      - name: Start latest Paper server
+      - name: Start pinned Paper server
         run: docker compose up -d --wait minecraft
 
       - name: Run integration tests
